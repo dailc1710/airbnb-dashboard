@@ -152,19 +152,18 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
             st.info("Chưa có dữ liệu trước xử lý để so sánh missing values.")
 
     cleaned_csv = df_cleaned.to_csv(index=False).encode("utf-8")
-    scaled_csv = df_scaled.to_csv(index=False).encode("utf-8")
     ml_csv = df_ml_ready.to_csv(index=False).encode("utf-8")
 
     st.subheader("Download preprocessing outputs")
     st.caption(
         "File clean là đầu ra chính sau toàn bộ bước preprocessing và feature engineering. "
-        "Bản scaled dùng cho visualization, còn bản encoded giữ để đưa vào học máy."
+        "Bản encoded giữ để đưa vào học máy."
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         st.download_button(
-            label="Download preprocessing file",
+            label="Download cleaned data",
             data=cleaned_csv,
             file_name="Airbnb_Data_cleaned.csv",
             mime="text/csv",
@@ -172,14 +171,6 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
             type="primary",
         )
     with col2:
-        st.download_button(
-            label="Download scaled file",
-            data=scaled_csv,
-            file_name="Airbnb_Data_scaled.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    with col3:
         st.download_button(
             label="Download encoded file",
             data=ml_csv,
@@ -189,8 +180,8 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
         )
 
     st.caption(
-        "File `Airbnb_Data_scaled.csv` hiện export theo MinMaxScaler cho phần trực quan hóa. "
-        "Các lựa chọn StandardScaler, RobustScaler và Log scaling được giữ trong tab step như phương án tham chiếu."
+        "File scaled vẫn được tạo nội bộ cho visualization bằng MinMaxScaler, "
+        "nhưng không hiển thị nút download ở tab này."
     )
 
     scaled_columns = df_scaled.select_dtypes(include="number").columns.tolist()

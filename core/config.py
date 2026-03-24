@@ -404,31 +404,30 @@ PREPROCESSING_PIPELINE_STEPS = [
         "summary": dedent(
             """
             - Giữ nguyên `host_id`.
-            - Label encode: `host_identity_verified`, `instant_bookable`, `cancellation_policy`, `customer_segment`.
-            - One-hot encode: `neighbourhood_group`, `neighbourhood`, `room_type`.
+            - Label encode: `host_identity_verified`, `neighbourhood_group`, `neighbourhood`, `instant_bookable`, `cancellation_policy`.
+            - One-hot encode: `room_type`, `customer_segment`.
             - Giữ nguyên các biến numeric.
             - Chuyển `last_review` thành `days_since_last_review`.
+            - Sau khi one-hot, chuẩn hóa lại tên cột để bỏ khoảng trắng và ký tự gây khó chịu khi code.
             """
         ).strip(),
         "code": dedent(
             """
             encoded_df = df.copy()
             encoded_df["host_identity_verified"] = encoded_df["host_identity_verified"].map({"unconfirmed": 0, "verified": 1})
+            encoded_df["neighbourhood_group"] = encoded_df["neighbourhood_group"].astype("category").cat.codes
+            encoded_df["neighbourhood"] = encoded_df["neighbourhood"].astype("category").cat.codes
             encoded_df["instant_bookable"] = encoded_df["instant_bookable"].map({"false": 0, "true": 1})
             encoded_df["cancellation_policy"] = encoded_df["cancellation_policy"].map({"strict": 0, "moderate": 1, "flexible": 2})
-            encoded_df["customer_segment"] = encoded_df["customer_segment"].map({
-                "short stay (1-3 nights)": 0,
-                "business/leisure (4-7 nights)": 1,
-                "long stay (>7 nights)": 2,
-            })
             encoded_df["days_since_last_review"] = (pd.Timestamp("2022-12-31") - pd.to_datetime(encoded_df["last_review"])).dt.days
             encoded_df = encoded_df.drop(columns=["last_review"])
             encoded_df = pd.get_dummies(
                 encoded_df,
-                columns=["neighbourhood_group", "neighbourhood", "room_type"],
+                columns=["room_type", "customer_segment"],
                 drop_first=True,
                 dtype="int64",
             )
+            encoded_df = normalize_columns(encoded_df)
             """
         ).strip(),
     },

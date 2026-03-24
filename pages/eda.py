@@ -1233,30 +1233,80 @@ def _render_pipeline_summary(
     ml_ready_export = step_metrics.get("ml_ready_export", {})
     with st.expander("10. Encoding for Machine Learning", expanded=True):
         st.write("Status: Completed")
-        st.write(
-            f"Dropped identifier columns: {_format_column_list(ml_ready_export.get('dropped_identifier_columns', []))}"
-        )
-        st.write(
-            f"Kept identifier columns: {_format_column_list(ml_ready_export.get('kept_identifier_columns', []))}"
-        )
-        st.write(
-            f"Datetime engineered columns: {_format_column_list(ml_ready_export.get('datetime_engineered_columns', []))}"
-        )
-        st.write(
-            f"Label encoded columns: {_format_column_list(ml_ready_export.get('label_encoded_columns', []))}"
-        )
-        st.write(
-            f"One-hot encoded columns: {_format_column_list(ml_ready_export.get('one_hot_encoded_columns', []))}"
-        )
-        st.write(
-            f"Numeric passthrough columns: {_format_column_list(ml_ready_export.get('passthrough_numeric_columns', []))}"
-        )
+        generated_counts = ml_ready_export.get("one_hot_generated_counts", {})
+        encoding_plan_rows = [
+            {"No.": 1, "Original Column": "host_id", "Data Type": "Identifier", "Encoding Method": "No encoding. Keep the raw host ID.", "Output Columns": "1 host_id column"},
+            {"No.": 2, "Original Column": "host_identity_verified", "Data Type": "Binary", "Encoding Method": "Label encode: unconfirmed -> 0, verified -> 1.", "Output Columns": "1 column"},
+            {"No.": 3, "Original Column": "neighbourhood_group", "Data Type": "Categorical", "Encoding Method": "Label encode.", "Output Columns": "1 column"},
+            {"No.": 4, "Original Column": "neighbourhood", "Data Type": "Categorical", "Encoding Method": "Label encode.", "Output Columns": "1 column"},
+            {"No.": 5, "Original Column": "instant_bookable", "Data Type": "Binary", "Encoding Method": "Label encode: false -> 0, true -> 1.", "Output Columns": "1 column"},
+            {"No.": 6, "Original Column": "cancellation_policy", "Data Type": "Categorical", "Encoding Method": "Label encode.", "Output Columns": "1 column"},
+            {"No.": 7, "Original Column": "room_type", "Data Type": "Categorical", "Encoding Method": "One-hot encode.", "Output Columns": f"{int(generated_counts.get('room_type', 0)):,} columns"},
+            {"No.": 8, "Original Column": "construction_year", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 9, "Original Column": "price", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 10, "Original Column": "minimum_nights", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 11, "Original Column": "number_of_reviews", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 12, "Original Column": "last_review", "Data Type": "Datetime", "Encoding Method": "Convert to days_since_last_review.", "Output Columns": "1 derived column"},
+            {"No.": 13, "Original Column": "review_rate_number", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 14, "Original Column": "calculated_host_listings_count", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 15, "Original Column": "availability_365", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 16, "Original Column": "listing_year", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 17, "Original Column": "property_age", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 18, "Original Column": "estimated_revenue", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 19, "Original Column": "occupancy_rate", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 20, "Original Column": "booking_flexibility_score", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
+            {"No.": 21, "Original Column": "customer_segment", "Data Type": "Categorical", "Encoding Method": "One-hot encode in the current pipeline.", "Output Columns": f"{int(generated_counts.get('customer_segment', 0)):,} columns"},
+        ]
+        st.dataframe(pd.DataFrame(encoding_plan_rows), use_container_width=True, hide_index=True)
+
         ml_shape = ml_ready_export.get("ml_shape", [])
         if isinstance(ml_shape, list) and len(ml_shape) == 2:
             st.write(f"Encoded dataframe shape: {ml_shape[0]:,} rows x {ml_shape[1]:,} columns")
+        dropped_identifier_columns = ml_ready_export.get("dropped_identifier_columns", [])
+        if dropped_identifier_columns:
+            st.write(
+                f"Dropped identifier columns at encoding step: {_format_column_list(dropped_identifier_columns)}"
+            )
         st.write(
-            f"Remaining non-numeric columns: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
+            f"Non-numeric kept intentionally: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
         )
+
+        with st.expander("One-Hot Column Explanation", expanded=False):
+            st.markdown(
+                "- `drop_first=True` means each one-hot feature drops one baseline category, so the number of generated columns equals `original category count - 1`."
+            )
+            generated_one_hot_columns = ml_ready_export.get("one_hot_generated_columns", [])
+            room_type_columns = [
+                column for column in generated_one_hot_columns if column.startswith("room_type_")
+            ]
+            customer_segment_columns = [
+                column for column in generated_one_hot_columns if column.startswith("customer_segment_")
+            ]
+            if generated_counts.get("room_type", 0):
+                st.markdown(
+                    f"- `room_type`: the original data has 4 categories, so after one-hot encoding with `drop_first=True`, **{int(generated_counts.get('room_type', 0))} columns** remain."
+                )
+                st.write("Generated columns from `room_type`:")
+                st.write(_format_column_list(room_type_columns))
+            if generated_counts.get("customer_segment", 0):
+                st.markdown(
+                    f"- `customer_segment`: the original data has 3 categories, so after one-hot encoding with `drop_first=True`, **{int(generated_counts.get('customer_segment', 0))} columns** remain."
+                )
+                st.write("Generated columns from `customer_segment`:")
+                st.write(_format_column_list(customer_segment_columns))
+        with st.expander("Encoding Code Example", expanded=False):
+            st.code(
+                """
+df["host_identity_verified"] = df["host_identity_verified"].map({"unconfirmed": 0, "verified": 1})
+df["neighbourhood_group"] = df["neighbourhood_group"].astype("category").cat.codes
+df["neighbourhood"] = df["neighbourhood"].astype("category").cat.codes
+df["instant_bookable"] = df["instant_bookable"].map({"false": 0, "true": 1})
+df["cancellation_policy"] = df["cancellation_policy"].map({"strict": 0, "moderate": 1, "flexible": 2})
+df["days_since_last_review"] = (pd.Timestamp("2022-12-31") - pd.to_datetime(df["last_review"])).dt.days
+df = pd.get_dummies(df, columns=["room_type", "customer_segment"], drop_first=True)
+                """.strip(),
+                language="python",
+            )
 
     st.markdown("---")
     st.write(f"Dropped columns summary: {_format_column_list(dropped_columns)}")
@@ -1275,7 +1325,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             render_processing_panel(_frame)
         with tab_steps:
             if processing_report is None or before_frame is None:
-                st.info("Runtime summary chưa có trong session hiện tại. Phần mô tả step vẫn được hiển thị bên dưới.")
+                st.info("The runtime summary is not available in the current session. The step-by-step description is still shown below.")
                 render_processing_steps_panel()
             else:
                 _render_pipeline_summary(processing_report, before_frame)
@@ -1330,7 +1380,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             _render_chart(
                 "1. Average Price Trend by Neighbourhood Group (2012-2022)",
                 price_chart,
-                "Insight: Nhu cầu lưu trú ở các quận tăng kéo theo giá thuê cũng tăng trong 10 năm qua.",
+                "Insight: Demand for stays across boroughs has increased, and average prices have risen over the last decade as well.",
             )
 
         if {"occupancy_rate", "listing_year", "neighbourhood_group"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
@@ -1352,7 +1402,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             _render_chart(
                 "2. Occupancy Rate Trend by Neighbourhood Group (2012-2022)",
                 occupancy_chart,
-                "Insight: Nhu cầu lưu trú ở các quận tăng kéo theo giá thuê cũng tăng trong 10 năm qua.",
+                "Insight: Occupancy levels have generally strengthened across boroughs, pointing to sustained demand over time.",
             )
 
         if {"listing_year", "estimated_revenue"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
@@ -1371,7 +1421,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             _render_chart(
                 "3. Average Estimated Revenue by Year (2012-2022)",
                 revenue_year_chart,
-                "Insight: Doanh thu trung bình cho thấy thị trường Airbnb tại New York City tăng trưởng rõ trong giai đoạn 2012-2022.",
+                "Insight: Average estimated revenue indicates clear Airbnb market growth in New York City during 2012-2022.",
             )
 
         if {"listing_year", "estimated_revenue", "neighbourhood_group"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
@@ -1393,7 +1443,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             _render_chart(
                 "4. Average Estimated Revenue by Borough and Year",
                 revenue_area_chart,
-                "Insight: Doanh thu trung bình tăng trên nhiều quận, phản ánh sự mở rộng của thị trường Airbnb toàn thành phố.",
+                "Insight: Average revenue increased across multiple boroughs, reflecting citywide expansion of the Airbnb market.",
             )
 
         if {"customer_segment", "estimated_revenue"}.issubset(viz_frame.columns):
@@ -1422,7 +1472,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 _render_chart(
                     "5. Average Estimated Revenue by Customer Segment",
                     segment_chart,
-                    "Insight: Biểu đồ này giúp nhận ra tệp khách hàng tiềm năng dựa trên doanh thu ước tính của từng nhóm lưu trú.",
+                    "Insight: This chart helps identify promising customer segments based on the estimated revenue of each stay type.",
                 )
 
         correlation_columns = [
@@ -1446,5 +1496,5 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             _render_chart(
                 "6. Correlation Between Occupancy Rate and Key Variables",
                 correlation_heatmap,
-                f"Insight: `{strongest_driver}` hiện là biến có tương quan mạnh nhất với `occupancy_rate` trong nhóm phân tích này.",
+                f"Insight: `{strongest_driver}` is currently the variable most strongly correlated with `occupancy_rate` in this analysis set.",
             )

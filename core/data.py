@@ -275,6 +275,20 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
     if dropped_identifier_columns:
         ml_ready = ml_ready.drop(columns=dropped_identifier_columns)
     kept_identifier_columns = [column for column in ["host_id"] if column in ml_ready.columns]
+    passthrough_numeric_candidates = [
+        "construction_year",
+        "price",
+        "minimum_nights",
+        "number_of_reviews",
+        "review_rate_number",
+        "calculated_host_listings_count",
+        "availability_365",
+        "listing_year",
+        "property_age",
+        "estimated_revenue",
+        "occupancy_rate",
+        "booking_flexibility_score",
+    ]
 
     def _normalize_text(series: pd.Series) -> pd.Series:
         return (
@@ -293,7 +307,15 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
 
     label_encoded_columns: list[str] = []
     one_hot_encoded_columns: list[str] = []
+    one_hot_generated_columns: list[str] = []
+    one_hot_generated_counts: dict[str, int] = {}
     datetime_engineered_columns: list[str] = []
+
+    def _label_encode_text(series: pd.Series, *, fill_value: str = "unknown") -> tuple[pd.Series, dict[str, int]]:
+        normalized = _normalize_text(series).fillna(fill_value)
+        categories = sorted(str(value) for value in normalized.dropna().unique().tolist())
+        mapping = {value: index for index, value in enumerate(categories)}
+        return normalized.map(mapping).astype("int64"), mapping
 
     if "host_id" in ml_ready.columns:
         ml_ready["host_id"] = _normalize_text(ml_ready["host_id"]).fillna("unknown_host")
@@ -317,16 +339,13 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         ml_ready["cancellation_policy"] = cancellation.map({"strict": 0, "moderate": 1, "flexible": 2}).fillna(0).astype("int64")
         label_encoded_columns.append("cancellation_policy")
 
-    if "customer_segment" in ml_ready.columns:
-        customer_segment = _normalize_text(ml_ready["customer_segment"]).fillna("long stay (>7 nights)")
-        ml_ready["customer_segment"] = customer_segment.map(
-            {
-                "short stay (1-3 nights)": 0,
-                "business/leisure (4-7 nights)": 1,
-                "long stay (>7 nights)": 2,
-            }
-        ).fillna(2).astype("int64")
-        label_encoded_columns.append("customer_segment")
+    if "neighbourhood_group" in ml_ready.columns:
+        ml_ready["neighbourhood_group"], _ = _label_encode_text(ml_ready["neighbourhood_group"], fill_value="unknown")
+        label_encoded_columns.append("neighbourhood_group")
+
+    if "neighbourhood" in ml_ready.columns:
+        ml_ready["neighbourhood"], _ = _label_encode_text(ml_ready["neighbourhood"], fill_value="unknown")
+        label_encoded_columns.append("neighbourhood")
 
     if "construction_year" in ml_ready.columns:
         construction_year = pd.to_datetime(ml_ready["construction_year"], errors="coerce")
@@ -345,7 +364,7 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
 
     one_hot_targets = [
         column
-        for column in ["neighbourhood_group", "neighbourhood", "room_type"]
+        for column in ["room_type", "customer_segment"]
         if column in ml_ready.columns
     ]
     for column in one_hot_targets:
@@ -359,15 +378,29 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
             prefix_sep="__",
             dtype="int64",
         )
+        ml_ready = normalize_columns(ml_ready)
         one_hot_encoded_columns = one_hot_targets
+        one_hot_generated_columns = [
+            column
+            for column in ml_ready.columns
+            if any(column.startswith(f"{target}_") for target in one_hot_targets)
+        ]
+        one_hot_generated_counts = {
+            target: sum(column.startswith(f"{target}_") for column in one_hot_generated_columns)
+            for target in one_hot_targets
+        }
 
-    passthrough_numeric_columns = ml_ready.select_dtypes(include="number").columns.tolist()
+    passthrough_numeric_columns = [
+        column for column in passthrough_numeric_candidates if column in ml_ready.columns
+    ]
     metadata = {
         "dropped_identifier_columns": dropped_identifier_columns,
         "kept_identifier_columns": kept_identifier_columns,
         "datetime_engineered_columns": datetime_engineered_columns,
         "label_encoded_columns": label_encoded_columns,
         "one_hot_encoded_columns": one_hot_encoded_columns,
+        "one_hot_generated_columns": one_hot_generated_columns,
+        "one_hot_generated_counts": one_hot_generated_counts,
         "passthrough_numeric_columns": passthrough_numeric_columns,
         "ml_shape": list(ml_ready.shape),
         "non_numeric_columns": ml_ready.select_dtypes(exclude="number").columns.tolist(),

@@ -481,6 +481,8 @@ def _build_processing_report(
                 "datetime_engineered_columns": ml_metadata["datetime_engineered_columns"],
                 "label_encoded_columns": ml_metadata["label_encoded_columns"],
                 "one_hot_encoded_columns": ml_metadata["one_hot_encoded_columns"],
+                "one_hot_generated_columns": ml_metadata["one_hot_generated_columns"],
+                "one_hot_generated_counts": ml_metadata["one_hot_generated_counts"],
                 "passthrough_numeric_columns": ml_metadata["passthrough_numeric_columns"],
                 "ml_shape": ml_metadata["ml_shape"],
                 "non_numeric_columns": ml_metadata["non_numeric_columns"],
