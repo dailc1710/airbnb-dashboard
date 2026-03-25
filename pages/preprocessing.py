@@ -60,6 +60,41 @@ def run_processing_pipeline(
     return execute_preprocessing_pipeline(raw_frame)
 
 
+def _render_download_outputs(df_cleaned: pd.DataFrame, df_ml_ready: pd.DataFrame) -> None:
+    cleaned_csv = df_cleaned.to_csv(index=False).encode("utf-8")
+    ml_csv = df_ml_ready.to_csv(index=False).encode("utf-8")
+
+    st.subheader("Download preprocessing outputs")
+    st.caption(
+        "File clean là đầu ra chính sau toàn bộ bước preprocessing và feature engineering. "
+        "Bản encoded giữ để đưa vào học máy."
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            label="Download cleaned data",
+            data=cleaned_csv,
+            file_name="Airbnb_Data_cleaned.csv",
+            mime="text/csv",
+            use_container_width=True,
+            type="primary",
+        )
+    with col2:
+        st.download_button(
+            label="Download encoded file",
+            data=ml_csv,
+            file_name="Airbnb_Data_encoded.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    st.caption(
+        "File scaled vẫn được tạo nội bộ cho visualization bằng MinMaxScaler, "
+        "nhưng không hiển thị nút download ở tab này."
+    )
+
+
 def render_processing_panel(raw_frame: pd.DataFrame) -> None:
     _ = raw_frame
     df_cleaned = st.session_state.get("processed_df")
@@ -122,6 +157,7 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
     remaining_missing = int(df_cleaned.isna().sum().sum())
 
     st.success("Preprocessing completed successfully.")
+    _render_download_outputs(df_cleaned, df_ml_ready)
 
     metric_cols = st.columns(5)
     metric_cols[0].metric("Rows after clean", f"{rows_after:,}")
@@ -150,39 +186,6 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
             )
         else:
             st.info("Chưa có dữ liệu trước xử lý để so sánh missing values.")
-
-    cleaned_csv = df_cleaned.to_csv(index=False).encode("utf-8")
-    ml_csv = df_ml_ready.to_csv(index=False).encode("utf-8")
-
-    st.subheader("Download preprocessing outputs")
-    st.caption(
-        "File clean là đầu ra chính sau toàn bộ bước preprocessing và feature engineering. "
-        "Bản encoded giữ để đưa vào học máy."
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            label="Download cleaned data",
-            data=cleaned_csv,
-            file_name="Airbnb_Data_cleaned.csv",
-            mime="text/csv",
-            use_container_width=True,
-            type="primary",
-        )
-    with col2:
-        st.download_button(
-            label="Download encoded file",
-            data=ml_csv,
-            file_name="Airbnb_Data_encoded.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-
-    st.caption(
-        "File scaled vẫn được tạo nội bộ cho visualization bằng MinMaxScaler, "
-        "nhưng không hiển thị nút download ở tab này."
-    )
 
     scaled_columns = df_scaled.select_dtypes(include="number").columns.tolist()
     if not scaled_columns:

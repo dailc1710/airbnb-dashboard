@@ -8,9 +8,49 @@ import streamlit as st
 
 from core.data import (
     build_missing_table,
+    normalize_columns,
 )
 from core.i18n import localize_dataframe_for_display, t, translate_room_type
 from pages.preprocessing import run_processing_pipeline, store_processed_outputs
+
+COLUMN_MEANINGS_VI = {
+    "id": "Mã định danh duy nhất của mỗi listing.",
+    "name": "Tên hiển thị của listing trên Airbnb.",
+    "host_id": "Mã định danh của chủ nhà (host).",
+    "host_name": "Tên của chủ nhà.",
+    "neighbourhood_group": "Khu vực lớn hoặc quận nơi listing tọa lạc, ví dụ Manhattan hoặc Brooklyn.",
+    "neighbourhood": "Khu phố hoặc địa bàn cụ thể của listing bên trong neighbourhood_group.",
+    "lat": "Vĩ độ của vị trí listing.",
+    "long": "Kinh độ của vị trí listing.",
+    "country": "Quốc gia của listing.",
+    "country_code": "Mã quốc gia viết tắt của listing.",
+    "room_type": "Loại chỗ ở được cho thuê, ví dụ Entire home/apt hoặc Private room.",
+    "price": "Giá niêm yết của listing, thường là theo đêm.",
+    "service_fee": "Phí dịch vụ đi kèm với booking.",
+    "minimum_nights": "Số đêm tối thiểu khách phải đặt.",
+    "number_of_reviews": "Tổng số lượt đánh giá mà listing đã nhận.",
+    "reviews_per_month": "Số lượt đánh giá trung bình mỗi tháng.",
+    "last_review": "Ngày gần nhất listing nhận được đánh giá.",
+    "review_rate_number": "Điểm đánh giá tổng quan của listing, thường theo thang điểm 1-5.",
+    "calculated_host_listings_count": "Số listing mà cùng một host đang sở hữu hoặc quản lý trong dữ liệu.",
+    "availability_365": "Số ngày listing còn trống hoặc có thể đặt trong 365 ngày gần nhất.",
+    "instant_bookable": "Cho biết listing có thể đặt ngay mà không cần host phê duyệt hay không.",
+    "cancellation_policy": "Chính sách hủy đặt phòng áp dụng cho listing.",
+    "construction_year": "Năm xây dựng hoặc năm hoàn thành của bất động sản.",
+    "house_rules": "Nội quy mà khách phải tuân theo khi ở tại listing.",
+    "license": "Mã giấy phép hoặc thông tin cấp phép vận hành listing.",
+    "host_identity_verified": "Trạng thái xác minh danh tính của host trên nền tảng.",
+    "listing_year": "Năm tham chiếu của listing dùng trong các phân tích theo thời gian.",
+    "property_age": "Tuổi của bất động sản, thường được tính từ năm xây dựng.",
+    "estimated_revenue": "Doanh thu ước tính của listing dựa trên giá và mức độ khai thác.",
+    "occupancy_rate": "Tỷ lệ lấp đầy hoặc mức độ được đặt của listing.",
+    "booking_flexibility_score": "Điểm tổng hợp phản ánh độ linh hoạt khi booking.",
+    "customer_segment": "Nhóm khách hàng hoặc kiểu lưu trú mà listing phù hợp.",
+    "days_since_last_review": "Số ngày tính từ lần đánh giá gần nhất đến mốc phân tích.",
+    "price_to_neighborhood_ratio": "Tỷ lệ giữa giá listing và mức giá trung bình của khu vực.",
+    "popularity_index": "Chỉ số tổng hợp phản ánh mức độ phổ biến của listing.",
+    "booking_friction": "Chỉ số tổng hợp phản ánh mức độ khó hoặc rào cản khi đặt listing.",
+}
 
 
 def _clear_preprocessing_session_state() -> None:
@@ -23,6 +63,25 @@ def _clear_preprocessing_session_state() -> None:
         "cleaned_data",
     ):
         st.session_state.pop(key, None)
+
+
+def _normalize_single_column_name(column_name: str) -> str:
+    normalized = normalize_columns(pd.DataFrame(columns=[column_name]))
+    return str(normalized.columns[0]) if len(normalized.columns) else str(column_name)
+
+
+def _get_column_meaning(column_name: str) -> str:
+    normalized_name = _normalize_single_column_name(str(column_name))
+    return COLUMN_MEANINGS_VI.get(
+        normalized_name,
+        "Trường dữ liệu gốc từ file tải lên. Dashboard hiện chưa có mô tả riêng cho cột này.",
+    )
+
+
+def _build_missing_table_with_meaning(frame: pd.DataFrame) -> pd.DataFrame:
+    health_table = build_missing_table(frame).copy()
+    health_table.insert(1, "Ý nghĩa", health_table["column"].astype(str).map(_get_column_meaning))
+    return health_table
 
 
 def filter_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
@@ -121,7 +180,7 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
         st.dataframe(localize_dataframe_for_display(audit_frame.head(50)), use_container_width=True, height=360)
 
         st.subheader(t("raw.missing.title"))
-        health_table = build_missing_table(audit_frame)
+        health_table = _build_missing_table_with_meaning(audit_frame)
         st.dataframe(
             localize_dataframe_for_display(health_table),
             use_container_width=True,
