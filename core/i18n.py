@@ -684,6 +684,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Availability by room type",
         "vi": "Mức sẵn có theo loại phòng",
     },
+    "eda.chart.revenue_by_segment": {
+        "en": "Average Estimated Revenue by Customer Segment",
+        "vi": "Doanh thu ước tính trung bình theo phân khúc khách hàng",
+    },
+    "eda.chart.revenue_by_segment.insight": {
+        "en": "This chart helps identify promising customer segments based on the estimated revenue of each stay type.",
+        "vi": "Biểu đồ này giúp xác định các phân khúc khách hàng tiềm năng dựa trên doanh thu ước tính của từng kiểu lưu trú.",
+    },
+    "eda.chart.revenue_by_segment_room": {
+        "en": "Average Estimated Revenue by Customer Segment and Room Type",
+        "vi": "Doanh thu ước tính trung bình theo phân khúc khách hàng và loại phòng",
+    },
+    "eda.chart.revenue_by_segment_room.insight": {
+        "en": "This chart compares estimated revenue across stay segments and room types to highlight the most valuable booking mix.",
+        "vi": "Biểu đồ này so sánh doanh thu ước tính giữa các phân khúc lưu trú và loại phòng để làm rõ tổ hợp đặt phòng có giá trị cao nhất.",
+    },
+    "label.customer_segment": {
+        "en": "Customer Segment",
+        "vi": "Phân khúc khách hàng",
+    },
+    "label.estimated_revenue": {
+        "en": "Estimated Revenue",
+        "vi": "Doanh thu ước tính",
+    },
+    "label.room_type": {
+        "en": "Room Type",
+        "vi": "Loại phòng",
+    },
     "conclusion.title": {
         "en": "Conclusion",
         "vi": "Kết luận",
@@ -853,6 +881,21 @@ ROOM_TYPE_TRANSLATIONS = {
     },
 }
 
+CUSTOMER_SEGMENT_TRANSLATIONS = {
+    "short stay (1-3 nights)": {
+        "en": "Short stay (1-3 nights)",
+        "vi": "Lưu trú ngắn ngày (1-3 đêm)",
+    },
+    "business/leisure (4-7 nights)": {
+        "en": "Business/leisure (4-7 nights)",
+        "vi": "Công tác/du lịch (4-7 đêm)",
+    },
+    "long stay (>7 nights)": {
+        "en": "Long stay (>7 nights)",
+        "vi": "Lưu trú dài ngày (>7 đêm)",
+    },
+}
+
 COLUMN_TRANSLATIONS = {
     "id": {"en": "ID", "vi": "ID"},
     "name": {"en": "Name", "vi": "Tên"},
@@ -866,6 +909,8 @@ COLUMN_TRANSLATIONS = {
     "review_rate_number": {"en": "Review Score", "vi": "Điểm đánh giá"},
     "minimum_nights": {"en": "Minimum Nights", "vi": "Số đêm tối thiểu"},
     "availability_365": {"en": "Availability 365", "vi": "Số ngày còn trống/năm"},
+    "estimated_revenue": {"en": "Estimated Revenue", "vi": "Doanh thu ước tính"},
+    "customer_segment": {"en": "Customer Segment", "vi": "Phân khúc khách hàng"},
     "last_review": {"en": "Last Review", "vi": "Đánh giá gần nhất"},
     "column": {"en": "Column", "vi": "Cột"},
     "original_dtype": {"en": "Original Data Type", "vi": "Kiểu dữ liệu gốc"},
@@ -940,11 +985,19 @@ def translate_room_type(value: object, language: str | None = None) -> str:
     return ROOM_TYPE_TRANSLATIONS.get(text, {}).get(lang, text)
 
 
+def translate_customer_segment(value: object, language: str | None = None) -> str:
+    text = str(value)
+    lang = language or get_language()
+    return CUSTOMER_SEGMENT_TRANSLATIONS.get(text, {}).get(lang, text)
+
+
 def localize_dataframe_for_display(frame: pd.DataFrame, language: str | None = None) -> pd.DataFrame:
     lang = language or get_language()
     localized = frame.copy()
     if "room_type" in localized.columns:
         localized["room_type"] = localized["room_type"].map(lambda value: translate_room_type(value, lang))
+    if "customer_segment" in localized.columns:
+        localized["customer_segment"] = localized["customer_segment"].map(lambda value: translate_customer_segment(value, lang))
 
     rename_map = {
         column: COLUMN_TRANSLATIONS.get(column, {}).get(lang, column)

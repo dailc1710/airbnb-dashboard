@@ -15,12 +15,24 @@ from core.data import (
     coerce_currency,
     normalize_columns,
 )
-from core.i18n import localize_dataframe_for_display, t
+from core.i18n import localize_dataframe_for_display, t, translate_customer_segment, translate_room_type
 from pages.preprocessing import render_processing_panel, render_processing_steps_panel
 from users import logout_user
 
 AREA_SEQUENCE = ["Brooklyn", "Manhattan", "Queens", "Bronx", "Staten Island"]
 ROOM_SEQUENCE = ["Entire home/apt", "Private room", "Shared room", "Hotel room"]
+ROOM_TYPE_COLOR_MAP = {
+    "Entire home/apt": "#1f3c5b",
+    "Private room": "#c95c36",
+    "Shared room": "#d8a65d",
+    "Hotel room": "#6d8f71",
+}
+ROOM_TYPE_CANONICAL_MAP = {
+    "entire home/apt": "Entire home/apt",
+    "private room": "Private room",
+    "shared room": "Shared room",
+    "hotel room": "Hotel room",
+}
 CANCELLATION_SEQUENCE = ["flexible", "moderate", "strict", "unknown"]
 BOROUGH_DISPLAY_ORDER = ["brooklyn", "manhattan", "queens", "bronx", "staten island"]
 BOROUGH_COLOR_MAP = {
@@ -1353,6 +1365,9 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
             viz_frame["customer_segment"] = (
                 viz_frame["customer_segment"].astype("string").str.strip().str.lower()
             )
+        if "room_type" in viz_frame.columns:
+            room_type_series = viz_frame["room_type"].astype("string").str.strip()
+            viz_frame["room_type"] = room_type_series.str.lower().map(ROOM_TYPE_CANONICAL_MAP).fillna(room_type_series)
 
         yearly_frame = viz_frame.copy()
         if {"listing_year", "neighbourhood_group"}.issubset(yearly_frame.columns):
@@ -1451,29 +1466,81 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 viz_frame["customer_segment"].isin(CUSTOMER_SEGMENT_ORDER)
             ].copy()
             if not segment_frame.empty:
-                revenue_segment = (
-                    segment_frame.groupby("customer_segment", as_index=False)["estimated_revenue"]
-                    .mean()
-                    .sort_values("estimated_revenue", ascending=False)
-                )
-                revenue_segment["customer_segment"] = pd.Categorical(
-                    revenue_segment["customer_segment"],
-                    categories=CUSTOMER_SEGMENT_ORDER,
-                    ordered=True,
-                )
-                revenue_segment = revenue_segment.sort_values("customer_segment")
-                segment_chart = px.bar(
-                    revenue_segment,
-                    x="customer_segment",
-                    y="estimated_revenue",
-                    color="customer_segment",
-                    color_discrete_sequence=["#c95c36", "#d8a65d", "#1f3c5b"],
-                )
-                _render_chart(
-                    "5. Average Estimated Revenue by Customer Segment",
-                    segment_chart,
-                    "Insight: This chart helps identify promising customer segments based on the estimated revenue of each stay type.",
-                )
+                if "room_type" in segment_frame.columns and segment_frame["room_type"].isin(ROOM_SEQUENCE).any():
+                    segment_frame = segment_frame.loc[segment_frame["room_type"].isin(ROOM_SEQUENCE)].copy()
+                    revenue_segment = (
+                        segment_frame.groupby(["customer_segment", "room_type"], as_index=False)["estimated_revenue"]
+                        .mean()
+                    )
+                    revenue_segment["customer_segment"] = pd.Categorical(
+                        revenue_segment["customer_segment"],
+                        categories=CUSTOMER_SEGMENT_ORDER,
+                        ordered=True,
+                    )
+                    revenue_segment["room_type"] = pd.Categorical(
+                        revenue_segment["room_type"],
+                        categories=ROOM_SEQUENCE,
+                        ordered=True,
+                    )
+                    revenue_segment = revenue_segment.sort_values(["customer_segment", "room_type"])
+                    revenue_segment["customer_segment_label"] = revenue_segment["customer_segment"].map(translate_customer_segment)
+                    revenue_segment["room_type_label"] = revenue_segment["room_type"].map(translate_room_type)
+                    segment_chart = px.bar(
+                        revenue_segment,
+                        x="customer_segment_label",
+                        y="estimated_revenue",
+                        color="room_type_label",
+                        barmode="group",
+                        labels={
+                            "customer_segment_label": t("label.customer_segment"),
+                            "estimated_revenue": t("label.estimated_revenue"),
+                            "room_type_label": t("label.room_type"),
+                        },
+                        category_orders={
+                            "customer_segment_label": [translate_customer_segment(segment) for segment in CUSTOMER_SEGMENT_ORDER],
+                            "room_type_label": [translate_room_type(room) for room in ROOM_SEQUENCE],
+                        },
+                        color_discrete_map={
+                            translate_room_type(room): color for room, color in ROOM_TYPE_COLOR_MAP.items()
+                        },
+                    )
+                    _render_chart(
+                        f"5. {t('eda.chart.revenue_by_segment_room')}",
+                        segment_chart,
+                        t("eda.chart.revenue_by_segment_room.insight"),
+                    )
+                else:
+                    revenue_segment = (
+                        segment_frame.groupby("customer_segment", as_index=False)["estimated_revenue"]
+                        .mean()
+                        .sort_values("estimated_revenue", ascending=False)
+                    )
+                    revenue_segment["customer_segment"] = pd.Categorical(
+                        revenue_segment["customer_segment"],
+                        categories=CUSTOMER_SEGMENT_ORDER,
+                        ordered=True,
+                    )
+                    revenue_segment = revenue_segment.sort_values("customer_segment")
+                    revenue_segment["customer_segment_label"] = revenue_segment["customer_segment"].map(translate_customer_segment)
+                    segment_chart = px.bar(
+                        revenue_segment,
+                        x="customer_segment_label",
+                        y="estimated_revenue",
+                        color="customer_segment_label",
+                        labels={
+                            "customer_segment_label": t("label.customer_segment"),
+                            "estimated_revenue": t("label.estimated_revenue"),
+                        },
+                        category_orders={
+                            "customer_segment_label": [translate_customer_segment(segment) for segment in CUSTOMER_SEGMENT_ORDER],
+                        },
+                        color_discrete_sequence=["#c95c36", "#d8a65d", "#1f3c5b"],
+                    )
+                    _render_chart(
+                        f"5. {t('eda.chart.revenue_by_segment')}",
+                        segment_chart,
+                        t("eda.chart.revenue_by_segment.insight"),
+                    )
 
         correlation_columns = [
             column
