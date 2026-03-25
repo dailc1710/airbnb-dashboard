@@ -720,6 +720,170 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Summarized findings help frame the dataset into practical takeaways.",
         "vi": "Các phát hiện được tóm tắt giúp chuyển bộ dữ liệu thành những điểm rút ra thực tế.",
     },
+    "conclusion.hero_badge": {
+        "en": "Executive readout",
+        "vi": "Tổng kết điều hành",
+    },
+    "conclusion.hero_body": {
+        "en": "The cleaned portfolio currently covers {listings} listings. Median nightly price is {median_price}, average occupancy reaches {occupancy}, and {top_area} is the strongest price benchmark in this market.",
+        "vi": "Tập dữ liệu sạch hiện bao gồm {listings} listing. Giá trung vị mỗi đêm là {median_price}, tỷ lệ lấp đầy trung bình đạt {occupancy}, và {top_area} đang là mốc giá mạnh nhất của thị trường này.",
+    },
+    "conclusion.kpi.listings": {
+        "en": "Listings analyzed",
+        "vi": "Listing được phân tích",
+    },
+    "conclusion.kpi.listings_note": {
+        "en": "Final cleaned records feeding the dashboard.",
+        "vi": "Số bản ghi sạch cuối cùng đang được dùng trong dashboard.",
+    },
+    "conclusion.kpi.price": {
+        "en": "Median nightly price",
+        "vi": "Giá trung vị mỗi đêm",
+    },
+    "conclusion.kpi.price_note": {
+        "en": "Premium benchmark currently comes from {area}.",
+        "vi": "Mốc giá cao hiện đang đến từ khu vực {area}.",
+    },
+    "conclusion.kpi.revenue": {
+        "en": "Median estimated revenue",
+        "vi": "Doanh thu ước tính trung vị",
+    },
+    "conclusion.kpi.revenue_note": {
+        "en": "Useful as a value lens beyond raw nightly price.",
+        "vi": "Dùng để nhìn giá trị tổng thể thay vì chỉ nhìn giá theo đêm.",
+    },
+    "conclusion.kpi.occupancy": {
+        "en": "Average occupancy",
+        "vi": "Tỷ lệ lấp đầy trung bình",
+    },
+    "conclusion.kpi.occupancy_note": {
+        "en": "The strongest occupancy signal is currently in {area}.",
+        "vi": "Tín hiệu lấp đầy mạnh nhất hiện nằm ở {area}.",
+    },
+    "conclusion.takeaways_kicker": {
+        "en": "What matters",
+        "vi": "Điểm quan trọng",
+    },
+    "conclusion.takeaways_title": {
+        "en": "Three signals worth carrying forward",
+        "vi": "Ba tín hiệu đáng giữ lại sau cùng",
+    },
+    "conclusion.takeaways_caption": {
+        "en": "These statements compress the market story into pricing, supply mix, and demand evidence.",
+        "vi": "Ba nhận định này nén câu chuyện thị trường thành ba lớp: giá, cơ cấu nguồn cung và bằng chứng nhu cầu.",
+    },
+    "conclusion.takeaway.pricing_eyebrow": {
+        "en": "Pricing",
+        "vi": "Giá",
+    },
+    "conclusion.takeaway.pricing_title": {
+        "en": "Premium pricing is concentrated",
+        "vi": "Mức giá cao đang tập trung rõ rệt",
+    },
+    "conclusion.takeaway.pricing_body": {
+        "en": "{area} posts the highest median price at {price}, so it should be treated as the premium benchmark for comparison.",
+        "vi": "{area} đang có giá trung vị cao nhất ở mức {price}, vì vậy đây nên được xem là mốc tham chiếu cho phân khúc cao cấp.",
+    },
+    "conclusion.takeaway.inventory_eyebrow": {
+        "en": "Supply mix",
+        "vi": "Cơ cấu cung",
+    },
+    "conclusion.takeaway.inventory_title": {
+        "en": "Inventory is concentrated by format and location",
+        "vi": "Nguồn cung đang tập trung theo loại phòng và khu vực",
+    },
+    "conclusion.takeaway.inventory_body": {
+        "en": "{room_type} makes up {share} of supply, while {areas} together account for {area_share} of all listings.",
+        "vi": "{room_type} chiếm {share} nguồn cung, trong khi {areas} cộng lại đang nắm {area_share} tổng số listing.",
+    },
+    "conclusion.takeaway.demand_eyebrow": {
+        "en": "Demand",
+        "vi": "Nhu cầu",
+    },
+    "conclusion.takeaway.demand_title": {
+        "en": "Demand signals are visible in occupancy and reviews",
+        "vi": "Nhu cầu thể hiện qua lấp đầy và đánh giá",
+    },
+    "conclusion.takeaway.demand_body": {
+        "en": "{area} leads average occupancy at {occupancy}, while {room_type} records the strongest median review volume at {reviews} reviews.",
+        "vi": "{area} đang dẫn đầu về tỷ lệ lấp đầy trung bình ở mức {occupancy}, còn {room_type} có lượng đánh giá trung vị cao nhất với {reviews} lượt.",
+    },
+    "conclusion.visual_kicker": {
+        "en": "Visual recap",
+        "vi": "Tóm tắt trực quan",
+    },
+    "conclusion.visual_title": {
+        "en": "Final charts to keep in the deck",
+        "vi": "Hai biểu đồ nên giữ lại trong phần chốt",
+    },
+    "conclusion.visual_caption": {
+        "en": "Use these views when you need a fast recap of pricing hierarchy and room mix structure.",
+        "vi": "Dùng hai biểu đồ này khi cần tóm tắt nhanh trật tự giá và cấu trúc loại phòng của thị trường.",
+    },
+    "conclusion.chart.area_title": {
+        "en": "Median price by neighborhood group",
+        "vi": "Giá trung vị theo nhóm khu vực",
+    },
+    "conclusion.chart.area_caption": {
+        "en": "A quick way to see which area sets the pricing ceiling.",
+        "vi": "Cách nhanh nhất để nhìn ra khu vực nào đang thiết lập trần giá.",
+    },
+    "conclusion.chart.room_title": {
+        "en": "Room type share of supply",
+        "vi": "Tỷ trọng nguồn cung theo loại phòng",
+    },
+    "conclusion.chart.room_caption": {
+        "en": "This chart shows which room format dominates the portfolio.",
+        "vi": "Biểu đồ này cho thấy loại phòng nào đang chiếm ưu thế trong danh mục listing.",
+    },
+    "conclusion.actions_kicker": {
+        "en": "Action plan",
+        "vi": "Hướng hành động",
+    },
+    "conclusion.actions_title": {
+        "en": "What to do next with these findings",
+        "vi": "Nên làm gì tiếp theo từ các phát hiện này",
+    },
+    "conclusion.actions_caption": {
+        "en": "These are practical follow-up directions instead of generic wrap-up text.",
+        "vi": "Đây là các hướng đi thực tế tiếp theo thay cho một đoạn kết luận chung chung.",
+    },
+    "conclusion.action.pricing_eyebrow": {
+        "en": "Pricing move",
+        "vi": "Hành động về giá",
+    },
+    "conclusion.action.pricing_title": {
+        "en": "Anchor premium strategy on the top market",
+        "vi": "Neo chiến lược giá cao vào thị trường dẫn đầu",
+    },
+    "conclusion.action.pricing_body": {
+        "en": "Use {area} and its {price} median as the premium reference, then compare discounting decisions in lower-performing areas against that anchor.",
+        "vi": "Dùng {area} với mức trung vị {price} làm mốc tham chiếu cho phân khúc cao cấp, rồi so lại các quyết định giảm giá ở những khu vực yếu hơn dựa trên mốc này.",
+    },
+    "conclusion.action.portfolio_eyebrow": {
+        "en": "Portfolio move",
+        "vi": "Hành động về danh mục",
+    },
+    "conclusion.action.portfolio_title": {
+        "en": "Avoid competing only inside the dominant room segment",
+        "vi": "Tránh chỉ cạnh tranh bên trong phân khúc phòng đang áp đảo",
+    },
+    "conclusion.action.portfolio_body": {
+        "en": "Because {room_type} already accounts for {share} of supply, differentiation through amenities, positioning, or complementary room formats matters more than price cuts alone.",
+        "vi": "Vì {room_type} đã chiếm tới {share} nguồn cung, khác biệt về tiện ích, định vị hoặc mở thêm loại phòng bổ sung sẽ quan trọng hơn việc chỉ giảm giá.",
+    },
+    "conclusion.action.operations_eyebrow": {
+        "en": "Operations move",
+        "vi": "Hành động vận hành",
+    },
+    "conclusion.action.operations_title": {
+        "en": "Track the strongest demand pockets closely",
+        "vi": "Theo dõi sát các điểm cầu mạnh nhất",
+    },
+    "conclusion.action.operations_body": {
+        "en": "Focus retention and campaign monitoring on {area}, where occupancy reaches {occupancy}, and keep reading feedback from {room_type} listings as a demand proxy.",
+        "vi": "Ưu tiên theo dõi giữ chân khách và hiệu quả chiến dịch tại {area}, nơi tỷ lệ lấp đầy đạt {occupancy}, đồng thời tiếp tục đọc tín hiệu phản hồi từ các listing {room_type} như một chỉ báo nhu cầu.",
+    },
     "conclusion.insight_label": {
         "en": "Insight {index}",
         "vi": "Insight {index}",
