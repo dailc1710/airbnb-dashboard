@@ -12,6 +12,7 @@ from pages.data_raw import render_page as render_data_raw_page
 from pages.eda import render_page as render_eda_page
 from pages.login import render_page as render_login_page
 from pages.overview import render_page as render_overview_page
+from pages.preprocessing import run_processing_pipeline, store_processed_outputs
 from pages.register import render_page as render_register_page
 from pages.sidebar import render_sidebar
 from users import initialize_session_state
@@ -32,11 +33,24 @@ def main() -> None:
 
     raw_data, cleaned_data, source_label, report = load_airbnb_bundle(dataset_cache_key())
 
+    if "processed_df" not in st.session_state or not isinstance(st.session_state["processed_df"], pd.DataFrame):
+        before_frame, df_cleaned, df_scaled, df_ml_ready, processing_report = run_processing_pipeline(raw_data)
+        store_processed_outputs(
+            before_frame,
+            df_cleaned,
+            df_scaled,
+            df_ml_ready,
+            processing_report,
+            persist=False,
+        )
+
     # If user has uploaded and processed a file, use that data instead of the default.
-    if "processed_df" in st.session_state and isinstance(st.session_state["processed_df"], pd.DataFrame):
+    if isinstance(st.session_state.get("processed_df"), pd.DataFrame):
         cleaned_data = st.session_state["processed_df"]
-        raw_data = st.session_state.get("raw_df", raw_data)
-        source_label = st.session_state.get("raw_df_name", source_label)
+        session_raw_df = st.session_state.get("raw_df")
+        if isinstance(session_raw_df, pd.DataFrame):
+            raw_data = session_raw_df
+        source_label = st.session_state.get("raw_df_name") or source_label
         report = st.session_state.get("processing_report", report)
 
     page = render_sidebar(source_label, cleaned_data)

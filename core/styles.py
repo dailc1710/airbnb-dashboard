@@ -75,36 +75,8 @@ def inject_styles() -> None:
                 display: flex;
                 align-items: center;
                 gap: 0.9rem;
-                margin: 0.15rem 0 1.05rem;
+                margin: 0.15rem 0 0.45rem;
                 padding: 0.15rem 0.15rem 0.15rem 0.05rem;
-            }
-            [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:has(.sidebar-profile):has(.sidebar-language-cell) {
-                align-items: center;
-            }
-            [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:has(.sidebar-profile):has(.sidebar-language-cell) > div[data-testid="column"] {
-                display: flex;
-                align-items: center;
-            }
-            [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:has(.sidebar-profile):has(.sidebar-language-cell) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
-                display: flex;
-                gap: 0rem;
-                width: 100%;
-                max-width: 100%;
-                height: 100%;
-                min-width: 1rem;
-                flex-flow: column;
-                flex: 1 1 0%;
-                align-items: stretch;
-                justify-content: flex-start;
-            }
-            [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:has(.sidebar-profile):has(.sidebar-language-cell) > div[data-testid="column"]:last-child {
-                justify-content: center;
-            }
-            [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:has(.sidebar-profile):has(.sidebar-language-cell) > div[data-testid="column"]:last-child .stButton {
-                width: 100%;
-                display: flex;
-                justify-content: center;
-                align-items: center;
             }
             .sidebar-profile__avatar {
                 position: relative;
@@ -149,8 +121,25 @@ def inject_styles() -> None:
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
             }
-            .sidebar-language-cell {
-                display: none;
+            .sidebar-language-row {
+                margin: -0.18rem 0 0.35rem;
+                width: 100%;
+            }
+            .sidebar-language-scope {
+                width: 100%;
+            }
+            .sidebar-language-label {
+                margin: 0 0 0.45rem;
+                text-align: center;
+                color: #8a7d73;
+                font-size: 0.68rem;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .sidebar-language-slot {
+                width: 100%;
+                text-align: center;
             }
             .sidebar-panel {
                 background: rgba(255, 255, 255, 0.84);
@@ -390,6 +379,87 @@ def inject_styles() -> None:
                 background: transparent !important;
                 color: #111827 !important;
                 box-shadow: none !important;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton {
+                display: flex;
+                justify-content: center;
+                margin-bottom: 0.15rem;
+                width: 100%;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton button {
+                display: inline-flex !important;
+                width: fit-content !important;
+                min-width: max-content !important;
+                max-width: none !important;
+                min-height: 0 !important;
+                padding: 0.45rem 0.8rem !important;
+                border-radius: 999px !important;
+                border: 1px solid rgba(120, 126, 140, 0.28) !important;
+                outline: none !important;
+                background: transparent !important;
+                background-color: transparent !important;
+                background-image: none !important;
+                color: #354055 !important;
+                justify-content: center !important;
+                text-align: center !important;
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+                white-space: nowrap !important;
+                margin-inline: auto !important;
+                transition:
+                    border-color 150ms ease,
+                    color 150ms ease !important;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton button > div {
+                width: max-content !important;
+                gap: 0.5rem !important;
+                align-items: center !important;
+                justify-content: center !important;
+                flex-wrap: nowrap !important;
+                white-space: nowrap !important;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton button > div > span {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: auto !important;
+                height: auto !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                border: none !important;
+                color: #4d596c !important;
+                font-size: 1rem !important;
+                flex-shrink: 0;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton button > div p {
+                margin: 0 !important;
+                width: auto !important;
+                display: inline-block !important;
+                white-space: nowrap !important;
+                word-break: keep-all !important;
+                overflow-wrap: normal !important;
+                font-family: "Segoe UI", "Trebuchet MS", Arial, sans-serif !important;
+                font-size: 0.92rem !important;
+                font-weight: 700 !important;
+                line-height: 1 !important;
+                letter-spacing: 0 !important;
+                color: #485364 !important;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton button:hover {
+                border-color: rgba(77, 89, 108, 0.4) !important;
+                background: transparent !important;
+                background-color: transparent !important;
+                background-image: none !important;
+                color: #2d3646 !important;
+                box-shadow: none !important;
+                transform: none !important;
+            }
+            [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.sidebar-language-scope) div[data-testid="stHorizontalBlock"] .stButton button:focus {
+                border-color: rgba(77, 89, 108, 0.4) !important;
+                background: transparent !important;
+                background-color: transparent !important;
+                background-image: none !important;
+                box-shadow: 0 0 0 0.14rem rgba(31, 60, 91, 0.08) !important;
             }
             .sidebar-action-note {
                 margin: 0.2rem 0 0.7rem;

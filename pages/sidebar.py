@@ -20,38 +20,52 @@ def render_sidebar(source_label: str, frame: pd.DataFrame) -> str:
     prepared_rows = len(frame)
     room_types = frame["room_type"].nunique() if "room_type" in frame.columns else 0
     neighborhoods = frame["neighbourhood_group"].nunique() if "neighbourhood_group" in frame.columns else 0
-    source_text = display_source_label(source_label)
+    source_text = display_source_label(source_label or "unknown source")
 
     if st.session_state.get("current_page") not in NAVIGATION_PAGES:
         st.session_state["current_page"] = NAVIGATION_PAGES[0]
 
     with st.sidebar:
         st.markdown('<div class="sidebar-brandmark">Airbnb</div>', unsafe_allow_html=True)
-        profile_cols = st.columns([0.78, 0.22])
-        with profile_cols[0]:
-            st.markdown(
-                f"""
-                <div class="sidebar-profile">
-                    <div class="sidebar-profile__avatar" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="10" cy="7" r="4"></circle>
-                            <path d="M20 8v6"></path>
-                            <path d="M23 11h-6"></path>
-                        </svg>
-                        <span class="sidebar-profile__dot"></span>
-                    </div>
-                    <div class="sidebar-profile__meta">
-                        <strong>{escape(username)}</strong>
-                        <span>{escape(t("sidebar.live_badge"))}</span>
-                    </div>
+        st.markdown(
+            f"""
+            <div class="sidebar-profile">
+                <div class="sidebar-profile__avatar" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="10" cy="7" r="4"></circle>
+                        <path d="M20 8v6"></path>
+                        <path d="M23 11h-6"></path>
+                    </svg>
+                    <span class="sidebar-profile__dot"></span>
                 </div>
-                """,
+                <div class="sidebar-profile__meta">
+                    <strong>{escape(username)}</strong>
+                    <span>{escape(t("sidebar.live_badge"))}</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.container():
+            st.markdown(
+                (
+                    '<div class="sidebar-language-scope">'
+                    '<div class="sidebar-language-row"></div>'
+                    f'<div class="sidebar-language-label">{escape(t("auth.language_hint"))}</div>'
+                    '<div class="sidebar-language-slot"></div>'
+                    "</div>"
+                ),
                 unsafe_allow_html=True,
             )
-        with profile_cols[1]:
-            st.markdown('<div class="sidebar-language-cell"></div>', unsafe_allow_html=True)
-            render_language_selector(key="sidebar_language", compact=True)
+            _, language_col, _ = st.columns([0.06, 0.88, 0.06])
+            with language_col:
+                render_language_selector(
+                    key="sidebar_language",
+                    show_icon=True,
+                    button_type="secondary",
+                    width="content",
+                )
         st.markdown(
             f'<div class="sidebar-section-title">{escape(t("sidebar.navigate"))}</div>',
             unsafe_allow_html=True,
@@ -108,5 +122,13 @@ def render_sidebar(source_label: str, frame: pd.DataFrame) -> str:
             """,
             unsafe_allow_html=True,
         )
+        st.markdown(
+            f'<div class="sidebar-section-title">{escape(t("sidebar.session_actions"))}</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(t("sidebar.logout_hint"))
+        if st.button(t("sidebar.logout"), use_container_width=True):
+            logout_user()
+            st.rerun()
 
     return page

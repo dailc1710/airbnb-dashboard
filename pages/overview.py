@@ -10,12 +10,10 @@ from core.config import CHART_COLORS, SAMPLE_SOURCE_LABEL
 from core.formatting import format_currency
 from core.i18n import (
     display_source_label,
-    localize_dataframe_for_display,
     nav_label,
     t,
     translate_room_type,
 )
-from core.insights import insight_sentences
 
 
 def _inject_overview_styles() -> None:
@@ -491,37 +489,3 @@ def render_page(frame: pd.DataFrame, source_label: str) -> None:
             st.plotly_chart(donut, use_container_width=True)
         else:
             st.info(t("common.na"))
-
-    left_col, right_col = st.columns([0.95, 1.05], gap="large")
-    with left_col:
-        st.subheader(t("overview.key_insights"))
-        insights = insight_sentences(frame)
-        insight_cards = [
-            f'<div class="overview-insight-card"><p>{escape(insight)}</p></div>'
-            for insight in insights[:4]
-        ]
-        st.markdown(f'<div class="overview-insight-stack">{"".join(insight_cards)}</div>', unsafe_allow_html=True)
-
-    with right_col:
-        if {"neighbourhood_group", "price"}.issubset(frame.columns):
-            area_snapshot = (
-                frame.groupby("neighbourhood_group", dropna=False)["price"]
-                .agg(["median", "mean", "count"])
-                .sort_values("median", ascending=False)
-                .reset_index()
-            )
-            area_snapshot["neighbourhood_group"] = area_snapshot["neighbourhood_group"].map(_title_case_label)
-            area_snapshot["median"] = area_snapshot["median"].round(2)
-            area_snapshot["mean"] = area_snapshot["mean"].round(2)
-            area_snapshot = area_snapshot.rename(
-                columns={
-                    "neighbourhood_group": "borough",
-                    "median": "median_price",
-                    "mean": "avg_price",
-                    "count": "listing_count",
-                }
-            )
-            st.subheader(t("overview.neighborhood_snapshot"))
-            st.dataframe(localize_dataframe_for_display(area_snapshot), use_container_width=True, hide_index=True)
-
-    st.caption(t("overview.quick_read_note"))

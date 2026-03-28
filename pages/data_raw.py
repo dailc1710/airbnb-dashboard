@@ -129,6 +129,9 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
     st.title(t("raw.title"))
     st.caption(t("raw.caption"))
 
+    if not isinstance(raw_frame, pd.DataFrame):
+        raw_frame = cleaned_frame.copy() if isinstance(cleaned_frame, pd.DataFrame) else pd.DataFrame()
+
     session_raw_frame = st.session_state.get("raw_df")
     session_raw_name = st.session_state.get("raw_df_name")
     audit_frame = session_raw_frame.copy() if isinstance(session_raw_frame, pd.DataFrame) else raw_frame.copy()

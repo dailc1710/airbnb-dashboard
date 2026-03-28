@@ -138,4 +138,3 @@ def logout_user() -> None:
     st.session_state["processed_ml_df"] = None
     st.session_state["preprocessing_before_df"] = None
     st.session_state["processing_report"] = None
-    st.session_state["current_page"] = "overview"

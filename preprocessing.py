@@ -63,15 +63,30 @@ ENGINEERED_NUMERIC_COLUMNS = [
     "estimated_revenue",
     "occupancy_rate",
     "booking_flexibility_score",
+    "booking_demand",
+    "availability_efficiency",
+    "revenue_per_available_night",
 ]
 ENGINEERED_CATEGORICAL_COLUMNS = [
     "customer_segment",
+    "availability_category",
 ]
 ENGINEERED_COLUMNS = ENGINEERED_NUMERIC_COLUMNS + ENGINEERED_CATEGORICAL_COLUMNS
 CUSTOMER_SEGMENT_LABELS = [
     "short stay (1-3 nights)",
     "business/leisure (4-7 nights)",
     "long stay (>7 nights)",
+]
+AVAILABILITY_CATEGORY_LABELS = [
+    "Low Availability",
+    "Medium Availability",
+    "High Availability",
+]
+AVAILABILITY_CATEGORY_BINS = [-1, 150, 300, 365]
+NON_SCALED_NUMERIC_COLUMNS = [
+    "booking_demand",
+    "availability_efficiency",
+    "revenue_per_available_night",
 ]
 EXPECTED_COLUMNS = sorted(
     set(
@@ -308,7 +323,11 @@ def _iqr_cap(series: pd.Series) -> pd.Series:
 
 def _build_scaled_dataframe(df_cleaned: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     df_scaled = df_cleaned.copy()
-    scaled_columns = df_scaled.select_dtypes(include="number").columns.tolist()
+    scaled_columns = [
+        column
+        for column in df_scaled.select_dtypes(include="number").columns.tolist()
+        if column not in NON_SCALED_NUMERIC_COLUMNS
+    ]
     if not scaled_columns or df_scaled.empty:
         return df_scaled, scaled_columns
 
@@ -410,17 +429,35 @@ def _build_processing_report(
         "review_rate_number_in_range": bool(df_cleaned["review_rate_number"].between(0, 5).all()) if "review_rate_number" in df_cleaned.columns else True,
         "remaining_issues": remaining_issues,
     }
+    scaled_numeric_columns = [
+        column
+        for column in df_scaled.select_dtypes(include="number").columns.tolist()
+        if column not in NON_SCALED_NUMERIC_COLUMNS
+    ]
     scaling_summary = {
-        "scaled_columns": df_scaled.select_dtypes(include="number").columns.tolist(),
-        "scaled_column_count": len(df_scaled.select_dtypes(include="number").columns.tolist()),
+        "scaled_columns": scaled_numeric_columns,
+        "scaled_column_count": len(scaled_numeric_columns),
         "scaled_shape": list(df_scaled.shape),
-        "active_scaler": "MinMaxScaler",
+        "active_scaler": "MinMaxScaler (visualization-only columns)",
         "alternative_scalers": ["StandardScaler", "RobustScaler", "Log Scaling"],
+        "passthrough_columns": [column for column in NON_SCALED_NUMERIC_COLUMNS if column in df_cleaned.columns],
+        "recommended_by_column": {
+            "price": "RobustScaler or log1p + StandardScaler for ML; MinMaxScaler only for dashboard comparison.",
+            "minimum_nights": "RobustScaler when modeling because the distribution stays right-skewed after capping.",
+            "number_of_reviews": "log1p + StandardScaler or RobustScaler when modeling because review counts are highly skewed.",
+            "review_rate_number": "No scaling is usually required because the feature already lives in the fixed 0-5 range.",
+            "calculated_host_listings_count": "RobustScaler or log1p + StandardScaler for ML because host counts remain uneven.",
+            "availability_365": "MinMaxScaler is acceptable for visualization; raw values are also interpretable for business analysis.",
+            "booking_demand": "No scaling recommended; keep raw because the unit already represents booked nights.",
+            "availability_category": "Do not scale. Use ordinal encoding only: Low=0, Medium=1, High=2.",
+            "availability_efficiency": "No scaling recommended for business analysis because the raw value is directly interpretable.",
+            "revenue_per_available_night": "No scaling recommended because the ratio is already in an interpretable monetary unit.",
+        },
         "notes": [
-            "MinMaxScaler keeps all numeric features in the 0-1 range for visualization.",
-            "StandardScaler highlights deviation from the mean.",
-            "RobustScaler is more stable when strong outliers remain.",
-            "Log scaling is usually applied on chart axes for highly skewed variables.",
+            "The scaled export is kept for visualization and compares only the selected numeric columns on a common 0-1 range.",
+            "The new engineered business metrics stay in raw units: booking_demand, availability_efficiency, revenue_per_available_night.",
+            "availability_category is not scaled; it is ordinal-encoded only in the machine-learning export.",
+            "RobustScaler is the safer fallback when strong skew or residual outliers remain.",
         ],
     }
 
@@ -464,7 +501,8 @@ def _build_processing_report(
             },
             "feature_engineering": {
                 "engineered_columns": ENGINEERED_COLUMNS,
-                "reference_year": DATASET_REFERENCE_YEAR,
+                "non_scaled_engineered_columns": NON_SCALED_NUMERIC_COLUMNS,
+                "ordinal_encoded_engineered_columns": ["availability_category"],
                 "definitions": [
                     "listing_year = year(last_review)",
                     "property_age = 2022 - construction_year",
@@ -472,6 +510,62 @@ def _build_processing_report(
                     "occupancy_rate = (365 - availability_365) / 365",
                     "booking_flexibility_score = instant_bookable score + cancellation_policy score",
                     "customer_segment = binning minimum_nights into short stay / business-leisure / long stay",
+                    "booking_demand = 365 - availability_365",
+                    "availability_category = cut(availability_365, [-1, 150, 300, 365]) -> Low / Medium / High Availability",
+                    "availability_efficiency = price * (365 - availability_365)",
+                    "revenue_per_available_night = price * (365 - availability_365) / 365",
+                ],
+                "details": [
+                    {
+                        "name": "Listing Year",
+                        "logic": "Trích xuất năm từ thời điểm đánh giá gần nhất để hỗ trợ phân tích xu hướng theo thời gian.",
+                        "formula": "listing_year = year(last_review)",
+                    },
+                    {
+                        "name": "Property Age",
+                        "logic": "Ước lượng tuổi của bất động sản từ năm xây dựng để phân tích ảnh hưởng của độ mới cũ.",
+                        "formula": "property_age = 2022 - construction_year",
+                    },
+                    {
+                        "name": "Estimated Revenue",
+                        "logic": "Ước lượng doanh thu tiềm năng dựa trên giá và số đêm đã được đặt.",
+                        "formula": "estimated_revenue = (365 - availability_365) * price",
+                    },
+                    {
+                        "name": "Occupancy Rate",
+                        "logic": "Đo tỷ lệ lấp đầy của listing dựa trên số ngày còn trống trong năm.",
+                        "formula": "occupancy_rate = (365 - availability_365) / 365",
+                    },
+                    {
+                        "name": "Booking Flexibility Score",
+                        "logic": "Tổng hợp mức linh hoạt khi đặt phòng từ khả năng đặt ngay và chính sách hủy.",
+                        "formula": "booking_flexibility_score = instant_bookable score + cancellation_policy score",
+                    },
+                    {
+                        "name": "Customer Segment",
+                        "logic": "Phân nhóm khách hàng theo thời lượng lưu trú tối thiểu để hỗ trợ đọc insight theo hành vi.",
+                        "formula": "customer_segment = binning minimum_nights into short stay / business-leisure / long stay",
+                    },
+                    {
+                        "name": "Booking Demand (Nhu cầu đặt phòng)",
+                        "logic": "Tính toán nhu cầu đặt phòng dựa trên số đêm không sẵn có.",
+                        "formula": "booking_demand = 365 - availability_365",
+                    },
+                    {
+                        "name": "Availability Category (Phân loại mức độ sẵn có)",
+                        "logic": "Phân chia các căn hộ thành 3 nhóm Low Availability, Medium Availability và High Availability dựa trên số đêm có sẵn.",
+                        "formula": "availability_category = pd.cut(availability_365, bins=[-1, 150, 300, 365], labels=['Low Availability', 'Medium Availability', 'High Availability'])",
+                    },
+                    {
+                        "name": "Availability Efficiency (Hiệu quả sẵn có)",
+                        "logic": "Đánh giá hiệu quả sử dụng các đêm có sẵn dựa trên price và availability_365.",
+                        "formula": "availability_efficiency = price * (365 - availability_365)",
+                    },
+                    {
+                        "name": "Revenue per Available Night (Doanh thu mỗi đêm có sẵn)",
+                        "logic": "Đánh giá doanh thu mỗi đêm có sẵn khi giá và mức độ sẵn có liên quan đến nhau.",
+                        "formula": "revenue_per_available_night = price * (365 - availability_365) / 365",
+                    },
                 ],
             },
             "scaling": scaling_summary,
@@ -480,6 +574,8 @@ def _build_processing_report(
                 "kept_identifier_columns": ml_metadata["kept_identifier_columns"],
                 "datetime_engineered_columns": ml_metadata["datetime_engineered_columns"],
                 "label_encoded_columns": ml_metadata["label_encoded_columns"],
+                "ordinal_encoded_columns": ml_metadata["ordinal_encoded_columns"],
+                "ordinal_mappings": ml_metadata["ordinal_mappings"],
                 "one_hot_encoded_columns": ml_metadata["one_hot_encoded_columns"],
                 "one_hot_generated_columns": ml_metadata["one_hot_generated_columns"],
                 "one_hot_generated_counts": ml_metadata["one_hot_generated_counts"],
@@ -512,7 +608,7 @@ def run_preprocessing_pipeline(
         processed[column] = _coerce_currency(processed[column])
 
     duplicates_removed = 0
-    if "id" in processed.columns:
+    if duplicate_target == "id":
         processed["id"] = _normalize_string_series(processed["id"])
         rows_before_dedup = len(processed)
         processed = processed.drop_duplicates(subset=["id"], keep="first").copy()
@@ -722,6 +818,19 @@ def run_preprocessing_pipeline(
         include_lowest=True,
         right=True,
     ).astype("string")
+
+    processed["booking_demand"] = (365.0 - processed["availability_365"]).clip(lower=0).astype("float64")
+    processed["availability_category"] = pd.cut(
+        processed["availability_365"],
+        bins=AVAILABILITY_CATEGORY_BINS,
+        labels=AVAILABILITY_CATEGORY_LABELS,
+        include_lowest=True,
+        right=True,
+    ).astype("string")
+    processed["availability_efficiency"] = (processed["price"] * processed["booking_demand"]).astype("float64")
+    processed["revenue_per_available_night"] = (
+        processed["availability_efficiency"] / 365.0
+    ).astype("float64")
 
     processed[NUMERIC_COLUMNS + ENGINEERED_NUMERIC_COLUMNS] = processed[NUMERIC_COLUMNS + ENGINEERED_NUMERIC_COLUMNS].astype("float64")
     df_cleaned = processed.reset_index(drop=True).copy()

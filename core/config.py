@@ -315,6 +315,21 @@ PREPROCESSING_PIPELINE_STEPS = [
             - `booking_flexibility_score`:
               `instant_bookable(true=1, false=0)` + `cancellation_policy(flexible=2, moderate=1, strict=0)`
             - `customer_segment`: gom nhóm `minimum_nights` thành 3 tệp khách hàng.
+
+            Bổ sung thêm:
+            - `Booking Demand (Nhu cầu đặt phòng)`
+              Logic: tính toán nhu cầu đặt phòng dựa trên số đêm không sẵn có.
+              Cách thực hiện: `booking_demand = 365 - availability_365`
+            - `Availability Category (Phân loại mức độ sẵn có)`
+              Logic: chia căn hộ thành 3 nhóm Low / Medium / High Availability dựa trên số đêm có sẵn.
+              Cách thực hiện:
+              `availability_category = pd.cut(availability_365, bins=[-1, 150, 300, 365], labels=['Low Availability', 'Medium Availability', 'High Availability'])`
+            - `Availability Efficiency (Hiệu quả sẵn có)`
+              Logic: đánh giá hiệu quả sử dụng các đêm có sẵn dựa trên `price` và `availability_365`.
+              Cách thực hiện: `availability_efficiency = price * (365 - availability_365)`
+            - `Revenue per Available Night (Doanh thu mỗi đêm có sẵn)`
+              Logic: đánh giá doanh thu mỗi đêm có sẵn khi giá và mức độ sẵn có liên quan đến nhau.
+              Cách thực hiện: `revenue_per_available_night = price * (365 - availability_365) / 365`
             """
         ).strip(),
         "code": dedent(
@@ -338,6 +353,21 @@ PREPROCESSING_PIPELINE_STEPS = [
                 ],
                 include_lowest=True,
             )
+
+            df["booking_demand"] = 365 - df["availability_365"]
+            df["availability_category"] = pd.cut(
+                df["availability_365"],
+                bins=[-1, 150, 300, 365],
+                labels=[
+                    "Low Availability",
+                    "Medium Availability",
+                    "High Availability",
+                ],
+                include_lowest=True,
+                right=True,
+            )
+            df["availability_efficiency"] = df["price"] * (365 - df["availability_365"])
+            df["revenue_per_available_night"] = df["availability_efficiency"] / 365
             """
         ).strip(),
     },
@@ -345,26 +375,39 @@ PREPROCESSING_PIPELINE_STEPS = [
         "title": "D. Scaling for Visualization",
         "summary": dedent(
             """
-            1. `MinMaxScaler`: đưa toàn bộ numeric feature về khoảng 0-1, dễ so sánh trên biểu đồ.
-            2. `StandardScaler`: phù hợp khi muốn xem biến lệch khỏi mean bao nhiêu.
-            3. `RobustScaler`: phù hợp khi còn nhiều outlier.
-            4. `Log Scaling`: thường áp dụng trực tiếp lên trục biểu đồ cho dữ liệu lệch mạnh.
+            - File `scaled` vẫn dùng `MinMaxScaler` để phục vụ dashboard visualization.
+            - Chỉ scale các cột numeric dùng để so sánh trực quan trên cùng thang đo.
+            - Không scale các feature mới:
+              `booking_demand`, `availability_efficiency`, `revenue_per_available_night`.
+            - `availability_category` không scale, vì đây là biến thứ bậc và sẽ được ordinal encoding ở file ML-ready.
+            - Gợi ý tham chiếu cho modeling:
+              `price` -> `RobustScaler` hoặc `log1p + StandardScaler`,
+              `minimum_nights`, `number_of_reviews`, `calculated_host_listings_count` -> `RobustScaler`,
+              `review_rate_number` -> thường có thể giữ nguyên.
 
-            Hiện tại dashboard export file `scaled` bằng `MinMaxScaler`; 3 lựa chọn còn lại được giữ như phương án tham chiếu cho visualization.
+            Hiện tại dashboard export file `scaled` bằng `MinMaxScaler`; các lựa chọn còn lại được giữ như phương án tham chiếu cho modeling.
             """
         ).strip(),
         "code": dedent(
             """
-            numeric_cols = df.select_dtypes(include="number").columns
+            numeric_cols = [
+                col for col in df.select_dtypes(include="number").columns
+                if col not in {
+                    "booking_demand",
+                    "availability_efficiency",
+                    "revenue_per_available_night",
+                }
+            ]
 
             minmax_scaler = MinMaxScaler()
             df_scaled = df.copy()
             df_scaled[numeric_cols] = minmax_scaler.fit_transform(df_scaled[numeric_cols])
 
-            # Alternative references for visualization:
-            # - StandardScaler: compare deviation from mean (z-score)
-            # - RobustScaler: stable when outliers are still present
-            # - Log scaling: usually applied on chart axis, not by replacing raw data
+            # Keep raw engineered metrics for interpretation:
+            # - booking_demand
+            # - availability_efficiency
+            # - revenue_per_available_night
+            # availability_category is handled by ordinal encoding in the ML-ready export
             """
         ).strip(),
     },
@@ -372,30 +415,32 @@ PREPROCESSING_PIPELINE_STEPS = [
         "title": "E. Visualization",
         "summary": dedent(
             """
-            - Multi-line chart: giá trung bình theo `listing_year` và `neighbourhood_group` trong giai đoạn 2012-2022.
-            - Multi-line chart: `occupancy_rate` theo `listing_year` và `neighbourhood_group` trong giai đoạn 2012-2022.
-            - Bar chart: doanh thu trung bình theo `listing_year`.
-            - Grouped bar chart: doanh thu trung bình theo `listing_year` và `neighbourhood_group`.
-            - Bar chart: doanh thu trung bình theo `customer_segment`.
-            - Correlation heatmap: `occupancy_rate`, `price`, `booking_flexibility_score`, `review_rate_number`.
+            - Pie Chart: tỷ lệ `availability_category` để đọc trạng thái cung của thị trường.
+            - Boxplot: phân bổ `booking_demand` theo `neighbourhood_group` để xem cầu theo khu vực.
+            - Scatter Plot: `price` vs `booking_demand`, kèm đường xu hướng để kiểm tra mức độ nhạy cảm về giá.
+            - Heatmap: trung bình `availability_efficiency` theo `room_type` và `neighbourhood_group` để tìm "sweet spot" kinh doanh.
+            - 4 biểu đồ được đọc theo logic Cung -> Cầu -> Giá -> Hiệu quả.
             """
         ).strip(),
         "code": dedent(
             """
-            price_trend = (
-                df.loc[df["listing_year"].between(2012, 2022)]
-                .groupby(["listing_year", "neighbourhood_group"], as_index=False)["price"]
-                .mean()
+            availability_mix = (
+                df["availability_category"]
+                .value_counts(normalize=True)
+                .rename_axis("availability_category")
+                .reset_index(name="share")
             )
-            occupancy_trend = (
-                df.loc[df["listing_year"].between(2012, 2022)]
-                .groupby(["listing_year", "neighbourhood_group"], as_index=False)["occupancy_rate"]
-                .mean()
+
+            booking_demand_by_area = df.groupby("neighbourhood_group", as_index=False)["booking_demand"].median()
+
+            scatter_df = df.loc[df["price"].between(0, 1200), ["price", "booking_demand"]].dropna()
+
+            efficiency_heatmap = df.pivot_table(
+                index="room_type",
+                columns="neighbourhood_group",
+                values="availability_efficiency",
+                aggfunc="mean",
             )
-            revenue_year = df.groupby("listing_year", as_index=False)["estimated_revenue"].mean()
-            revenue_area_year = df.groupby(["listing_year", "neighbourhood_group"], as_index=False)["estimated_revenue"].mean()
-            revenue_segment = df.groupby("customer_segment", as_index=False)["estimated_revenue"].mean()
-            corr = df[["occupancy_rate", "price", "booking_flexibility_score", "review_rate_number"]].corr()
             """
         ).strip(),
     },
@@ -403,31 +448,61 @@ PREPROCESSING_PIPELINE_STEPS = [
         "title": "F. Encoding for Machine Learning",
         "summary": dedent(
             """
-            - Giữ nguyên `host_id`.
-            - Label encode: `host_identity_verified`, `neighbourhood_group`, `neighbourhood`, `instant_bookable`, `cancellation_policy`.
-            - One-hot encode: `room_type`, `customer_segment`.
-            - Giữ nguyên các biến numeric.
-            - Chuyển `last_review` thành `days_since_last_review`.
-            - Sau khi one-hot, chuẩn hóa lại tên cột để bỏ khoảng trắng và ký tự gây khó chịu khi code.
+            - Giữ nguyên `host_id` vì đây là cột định danh của host.
+            - Binary encode:
+              `host_identity_verified` (`unconfirmed -> 0`, `verified -> 1`)
+              và `instant_bookable` (`false -> 0`, `true -> 1`).
+            - Label encode: `neighbourhood_group`, `neighbourhood`, `cancellation_policy`.
+            - One-hot encode: `room_type`.
+            - Giữ nguyên các biến numeric như `price`, `minimum_nights`, `number_of_reviews`,
+              `review_rate_number`, `calculated_host_listings_count`, `availability_365`.
+            - `construction_year` được giữ ở dạng năm số.
+            - Chuyển `last_review` thành `days_since_last_review` rồi bỏ cột ngày gốc.
+            - Các feature engineering cũ như `listing_year`, `property_age`, `estimated_revenue`,
+              `occupancy_rate`, `booking_flexibility_score`, `customer_segment`
+              được giữ thêm trong file encoded để không làm mất thông tin đã tạo từ pipeline.
+            - Trong nhóm feature engineering bổ sung:
+              `customer_segment` được one-hot encoding,
+              `availability_category` được ordinal encoding,
+              còn các feature numeric như `listing_year`, `property_age`, `estimated_revenue`,
+              `occupancy_rate`, `booking_flexibility_score`, `booking_demand`,
+              `availability_efficiency`, `revenue_per_available_night` được giữ nguyên.
+            - Các cột tạo mới từ Feature Engineering vẫn được giữ trong file ML-ready:
+              `booking_demand`, `availability_efficiency`, `revenue_per_available_night`,
+              và `availability_category` được ordinal encoding với `Low=0`, `Medium=1`, `High=2`.
             """
         ).strip(),
         "code": dedent(
             """
             encoded_df = df.copy()
             encoded_df["host_identity_verified"] = encoded_df["host_identity_verified"].map({"unconfirmed": 0, "verified": 1})
+            encoded_df["instant_bookable"] = encoded_df["instant_bookable"].map({"false": 0, "true": 1})
             encoded_df["neighbourhood_group"] = encoded_df["neighbourhood_group"].astype("category").cat.codes
             encoded_df["neighbourhood"] = encoded_df["neighbourhood"].astype("category").cat.codes
-            encoded_df["instant_bookable"] = encoded_df["instant_bookable"].map({"false": 0, "true": 1})
-            encoded_df["cancellation_policy"] = encoded_df["cancellation_policy"].map({"strict": 0, "moderate": 1, "flexible": 2})
-            encoded_df["days_since_last_review"] = (pd.Timestamp("2022-12-31") - pd.to_datetime(encoded_df["last_review"])).dt.days
+            encoded_df["cancellation_policy"] = encoded_df["cancellation_policy"].astype("category").cat.codes
+            encoded_df["construction_year"] = pd.to_datetime(
+                encoded_df["construction_year"],
+                errors="coerce",
+            ).dt.year
+            encoded_df["days_since_last_review"] = (
+                pd.Timestamp.today().normalize() - pd.to_datetime(encoded_df["last_review"])
+            ).dt.days
             encoded_df = encoded_df.drop(columns=["last_review"])
+            encoded_df["availability_category"] = encoded_df["availability_category"].map({
+                "Low Availability": 0,
+                "Medium Availability": 1,
+                "High Availability": 2,
+            })
+            # Keep engineered numeric features in raw form:
+            # listing_year, property_age, estimated_revenue, occupancy_rate,
+            # booking_flexibility_score, booking_demand,
+            # availability_efficiency, revenue_per_available_night
             encoded_df = pd.get_dummies(
                 encoded_df,
                 columns=["room_type", "customer_segment"],
                 drop_first=True,
                 dtype="int64",
             )
-            encoded_df = normalize_columns(encoded_df)
             """
         ).strip(),
     },

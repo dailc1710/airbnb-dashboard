@@ -41,8 +41,11 @@ def store_processed_outputs(
     df_scaled: pd.DataFrame,
     df_ml_ready: pd.DataFrame,
     processing_report: dict[str, object],
+    *,
+    persist: bool = True,
 ) -> None:
-    save_processed_outputs(df_cleaned, df_scaled, df_ml_ready)
+    if persist:
+        save_processed_outputs(df_cleaned, df_scaled, df_ml_ready)
     st.session_state["preprocessing_before_df"] = before_frame.copy()
     st.session_state["processing_report"] = processing_report
     st.session_state["processed_df"] = df_cleaned.copy()
@@ -90,8 +93,8 @@ def _render_download_outputs(df_cleaned: pd.DataFrame, df_ml_ready: pd.DataFrame
         )
 
     st.caption(
-        "File scaled vẫn được tạo nội bộ cho visualization bằng MinMaxScaler, "
-        "nhưng không hiển thị nút download ở tab này."
+        "File scaled vẫn được tạo nội bộ cho visualization bằng MinMaxScaler trên các cột numeric đã chọn. "
+        "Các feature mới như booking_demand, availability_efficiency và revenue_per_available_night được giữ raw."
     )
 
 
@@ -187,7 +190,7 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
         else:
             st.info("Chưa có dữ liệu trước xử lý để so sánh missing values.")
 
-    scaled_columns = df_scaled.select_dtypes(include="number").columns.tolist()
+    scaled_columns = processing_report.get("scaled_columns", df_scaled.select_dtypes(include="number").columns.tolist())
     if not scaled_columns:
         return
 

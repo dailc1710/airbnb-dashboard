@@ -15,6 +15,20 @@ def inject_auth_styles(
     st.markdown(
         f"""
         <style>
+            [data-testid="stSidebar"] {{
+                display: none !important;
+                min-width: 0 !important;
+                max-width: 0 !important;
+            }}
+            [data-testid="stSidebar"] > div:first-child {{
+                width: 0 !important;
+            }}
+            [data-testid="collapsedControl"] {{
+                display: none !important;
+            }}
+            [data-testid="stSidebarCollapseButton"] {{
+                display: none !important;
+            }}
             .block-container {{
                 max-width: 1220px;
                 padding-top: clamp(6.25rem, 14vh, 8.75rem);
@@ -169,12 +183,70 @@ def inject_auth_styles(
                 justify-content: center;
                 gap: 0.48rem;
             }}
+            .stButton > button[kind="tertiary"] > div p {{
+                margin: 0;
+                line-height: 1.1;
+            }}
             .stButton > button[kind="tertiary"]:hover {{
                 border-color: rgba(201, 92, 54, 0.24);
                 background: rgba(255, 255, 255, 0.96);
             }}
-            .auth-language-row {{
-                margin-top: 0.65rem;
+            .auth-language-inline {{
+                margin-top: 0.9rem;
+                width: 100%;
+            }}
+            .auth-language-button-scope {{
+                height: 0;
+                margin: 0;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton {{
+                display: flex;
+                justify-content: center;
+                width: 100%;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"] {{
+                min-height: auto !important;
+                padding: 0.15rem 0.3rem !important;
+                margin-inline: auto !important;
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                color: #202633 !important;
+                font-weight: 500 !important;
+                white-space: nowrap;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"] > div {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.55rem;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"] > div p {{
+                margin: 0 !important;
+                white-space: nowrap;
+                font-family: Georgia, "Times New Roman", serif !important;
+                font-size: 1.1rem !important;
+                font-weight: 500 !important;
+                letter-spacing: 0.01em;
+                color: #202633 !important;
+                line-height: 1 !important;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"] > div span {{
+                color: #202633 !important;
+                font-size: 1.08rem !important;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"]:hover {{
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                color: #111827 !important;
+                transform: none !important;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"]:focus {{
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                outline: none !important;
             }}
             @keyframes auth-fade-up {{
                 from {{
@@ -190,6 +262,9 @@ def inject_auth_styles(
                 .auth-hero-card h1 {{
                     font-size: 1.95rem;
                     max-width: none;
+                }}
+                div[data-testid="stVerticalBlock"]:has(.auth-language-button-scope) .stButton > button[kind="tertiary"] > div p {{
+                    font-size: 1.02rem !important;
                 }}
             }}
         </style>

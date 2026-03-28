@@ -288,6 +288,9 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         "estimated_revenue",
         "occupancy_rate",
         "booking_flexibility_score",
+        "booking_demand",
+        "availability_efficiency",
+        "revenue_per_available_night",
     ]
 
     def _normalize_text(series: pd.Series) -> pd.Series:
@@ -306,6 +309,8 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         )
 
     label_encoded_columns: list[str] = []
+    ordinal_encoded_columns: list[str] = []
+    ordinal_mappings: dict[str, dict[str, int]] = {}
     one_hot_encoded_columns: list[str] = []
     one_hot_generated_columns: list[str] = []
     one_hot_generated_counts: dict[str, int] = {}
@@ -316,9 +321,6 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         categories = sorted(str(value) for value in normalized.dropna().unique().tolist())
         mapping = {value: index for index, value in enumerate(categories)}
         return normalized.map(mapping).astype("int64"), mapping
-
-    if "host_id" in ml_ready.columns:
-        ml_ready["host_id"] = _normalize_text(ml_ready["host_id"]).fillna("unknown_host")
 
     if "host_identity_verified" in ml_ready.columns:
         verified = _normalize_text(ml_ready["host_identity_verified"]).fillna("unconfirmed")
@@ -335,8 +337,7 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         label_encoded_columns.append("instant_bookable")
 
     if "cancellation_policy" in ml_ready.columns:
-        cancellation = _normalize_text(ml_ready["cancellation_policy"]).fillna("strict")
-        ml_ready["cancellation_policy"] = cancellation.map({"strict": 0, "moderate": 1, "flexible": 2}).fillna(0).astype("int64")
+        ml_ready["cancellation_policy"], _ = _label_encode_text(ml_ready["cancellation_policy"], fill_value="unknown")
         label_encoded_columns.append("cancellation_policy")
 
     if "neighbourhood_group" in ml_ready.columns:
@@ -353,12 +354,42 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
 
     if "last_review" in ml_ready.columns:
         last_review = pd.to_datetime(ml_ready["last_review"], errors="coerce")
-        reference_date = pd.Timestamp("2022-12-31")
+        reference_date = pd.Timestamp.today().normalize()
         ml_ready["days_since_last_review"] = (reference_date - last_review).dt.days.astype("float64")
         ml_ready = ml_ready.drop(columns=["last_review"])
         datetime_engineered_columns = ["days_since_last_review"]
 
-    for column in ("price", "minimum_nights", "number_of_reviews", "review_rate_number", "calculated_host_listings_count", "availability_365", "listing_year", "property_age", "estimated_revenue", "occupancy_rate", "booking_flexibility_score"):
+    if "availability_category" in ml_ready.columns:
+        availability_category = _normalize_text(ml_ready["availability_category"]).fillna("low availability")
+        availability_mapping = {
+            "low availability": 0,
+            "medium availability": 1,
+            "high availability": 2,
+        }
+        ml_ready["availability_category"] = availability_category.map(availability_mapping).fillna(0).astype("int64")
+        ordinal_encoded_columns.append("availability_category")
+        ordinal_mappings["availability_category"] = {
+            "Low Availability": 0,
+            "Medium Availability": 1,
+            "High Availability": 2,
+        }
+
+    for column in (
+        "price",
+        "minimum_nights",
+        "number_of_reviews",
+        "review_rate_number",
+        "calculated_host_listings_count",
+        "availability_365",
+        "listing_year",
+        "property_age",
+        "estimated_revenue",
+        "occupancy_rate",
+        "booking_flexibility_score",
+        "booking_demand",
+        "availability_efficiency",
+        "revenue_per_available_night",
+    ):
         if column in ml_ready.columns:
             ml_ready[column] = pd.to_numeric(ml_ready[column], errors="coerce").astype("float64")
 
@@ -398,6 +429,8 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         "kept_identifier_columns": kept_identifier_columns,
         "datetime_engineered_columns": datetime_engineered_columns,
         "label_encoded_columns": label_encoded_columns,
+        "ordinal_encoded_columns": ordinal_encoded_columns,
+        "ordinal_mappings": ordinal_mappings,
         "one_hot_encoded_columns": one_hot_encoded_columns,
         "one_hot_generated_columns": one_hot_generated_columns,
         "one_hot_generated_counts": one_hot_generated_counts,

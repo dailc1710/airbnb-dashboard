@@ -92,7 +92,8 @@ def render_page() -> None:
         if st.button(t("register.switch.button"), key="switch_auth_login", use_container_width=True):
             st.session_state["auth_page"] = "login"
             st.rerun()
-        st.markdown('<div class="auth-language-row"></div>', unsafe_allow_html=True)
-        lang_cols = st.columns([0.28, 0.44, 0.28])
+        st.markdown('<div class="auth-language-inline"></div>', unsafe_allow_html=True)
+        lang_cols = st.columns([0.18, 0.64, 0.18])
         with lang_cols[1]:
-            render_language_selector(key="auth_language_register")
+            st.markdown('<div class="auth-language-button-scope"></div>', unsafe_allow_html=True)
+            render_language_selector(key="auth_language_register", width="stretch")

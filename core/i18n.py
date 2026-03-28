@@ -1073,6 +1073,10 @@ COLUMN_TRANSLATIONS = {
     "review_rate_number": {"en": "Review Score", "vi": "Điểm đánh giá"},
     "minimum_nights": {"en": "Minimum Nights", "vi": "Số đêm tối thiểu"},
     "availability_365": {"en": "Availability 365", "vi": "Số ngày còn trống/năm"},
+    "booking_demand": {"en": "Booking Demand", "vi": "Nhu cầu đặt phòng"},
+    "availability_category": {"en": "Availability Category", "vi": "Mức độ sẵn có"},
+    "availability_efficiency": {"en": "Availability Efficiency", "vi": "Hiệu quả sẵn có"},
+    "revenue_per_available_night": {"en": "Revenue per Available Night", "vi": "Doanh thu mỗi đêm khả dụng"},
     "estimated_revenue": {"en": "Estimated Revenue", "vi": "Doanh thu ước tính"},
     "customer_segment": {"en": "Customer Segment", "vi": "Phân khúc khách hàng"},
     "last_review": {"en": "Last Review", "vi": "Đánh giá gần nhất"},
@@ -1108,20 +1112,28 @@ def render_language_selector(
     *,
     key: str,
     compact: bool = False,
+    show_icon: bool = True,
+    button_type: str = "tertiary",
+    width: str = "content",
 ) -> None:
     current = get_language()
     next_language = "vi" if current == "en" else "en"
-    selected = st.button(
-        "\u00a0" if compact else t("common.language_toggle"),
-        key=key,
-        icon=":material/language:",
-        type="tertiary",
-        help=t(
+    button_kwargs = {
+        "key": key,
+        "type": button_type,
+        "help": t(
             "common.switch_language_help",
             current=language_name(current),
             next=language_name(next_language),
         ),
-        width="content",
+        "width": width,
+    }
+    if show_icon:
+        button_kwargs["icon"] = ":material/language:"
+
+    selected = st.button(
+        "\u00a0" if compact else t("common.language_toggle"),
+        **button_kwargs,
     )
     if selected:
         st.session_state["language"] = next_language

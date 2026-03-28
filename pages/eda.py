@@ -33,8 +33,25 @@ ROOM_TYPE_CANONICAL_MAP = {
     "shared room": "Shared room",
     "hotel room": "Hotel room",
 }
+AVAILABILITY_CATEGORY_ORDER = [
+    "Low Availability",
+    "Medium Availability",
+    "High Availability",
+]
+AVAILABILITY_CATEGORY_COLOR_MAP = {
+    "Low Availability": "#1f3c5b",
+    "Medium Availability": "#c95c36",
+    "High Availability": "#d8a65d",
+}
 CANCELLATION_SEQUENCE = ["flexible", "moderate", "strict", "unknown"]
 BOROUGH_DISPLAY_ORDER = ["brooklyn", "manhattan", "queens", "bronx", "staten island"]
+BOROUGH_LABEL_MAP = {
+    "brooklyn": "Brooklyn",
+    "manhattan": "Manhattan",
+    "queens": "Queens",
+    "bronx": "Bronx",
+    "staten island": "Staten Island",
+}
 BOROUGH_COLOR_MAP = {
     "brooklyn": "#1f3c5b",
     "manhattan": "#c95c36",
@@ -102,24 +119,9 @@ def _prepare_processed_eda_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if prepared.empty:
         return prepared
 
-    for column in ("neighbourhood_group", "neighbourhood", "room_type", "cancellation_policy", "customer_segment"):
+    for column in ("neighbourhood_group", "neighbourhood", "room_type", "cancellation_policy", "availability_category"):
         if column in prepared.columns:
             prepared[column] = prepared[column].astype("string").str.strip()
-
-    if "instant_bookable" in prepared.columns:
-        if pd.api.types.is_bool_dtype(prepared["instant_bookable"]):
-            prepared["instant_bookable"] = prepared["instant_bookable"].map({True: "TRUE", False: "FALSE"})
-        else:
-            prepared["instant_bookable"] = prepared["instant_bookable"].astype("string").str.strip().str.upper()
-
-    if "construction_year" in prepared.columns:
-        if pd.api.types.is_datetime64_any_dtype(prepared["construction_year"]):
-            prepared["construction_year"] = prepared["construction_year"].dt.year.astype("float64")
-        else:
-            prepared["construction_year"] = pd.to_numeric(
-                prepared["construction_year"].astype("string").str.extract(r"(\d{4})", expand=False),
-                errors="coerce",
-            )
 
     for column in (
         "price",
@@ -128,44 +130,55 @@ def _prepare_processed_eda_frame(frame: pd.DataFrame) -> pd.DataFrame:
         "review_rate_number",
         "calculated_host_listings_count",
         "availability_365",
-        "listing_year",
-        "property_age",
-        "estimated_revenue",
-        "occupancy_rate",
-        "booking_flexibility_score",
-        "service_fee",
-        "reviews_per_month",
-        "price_to_neighborhood_ratio",
-        "popularity_index",
-        "booking_friction",
+        "booking_demand",
+        "availability_efficiency",
+        "revenue_per_available_night",
     ):
         if column not in prepared.columns:
             continue
-        if column in {"price", "service_fee"}:
+        if column == "price":
             prepared[column] = _coerce_numeric(coerce_currency(prepared[column]))
-        else:
-            prepared[column] = _coerce_numeric(prepared[column])
+            continue
+        prepared[column] = _coerce_numeric(prepared[column])
 
     if "availability_365" in prepared.columns:
         prepared["availability_365"] = prepared["availability_365"].clip(lower=0, upper=365)
 
-    if "listing_year" not in prepared.columns and "last_review" in prepared.columns:
-        last_review = pd.to_datetime(prepared["last_review"], errors="coerce")
-        prepared["listing_year"] = pd.to_numeric(last_review.dt.year, errors="coerce")
+    if "booking_demand" not in prepared.columns and "availability_365" in prepared.columns:
+        prepared["booking_demand"] = (365 - prepared["availability_365"]).clip(lower=0).astype("float64")
 
-    if "customer_segment" not in prepared.columns and "minimum_nights" in prepared.columns:
-        prepared["customer_segment"] = pd.cut(
-            prepared["minimum_nights"],
-            bins=[0, 3, 7, float("inf")],
-            labels=CUSTOMER_SEGMENT_ORDER,
+    if "availability_category" not in prepared.columns and "availability_365" in prepared.columns:
+        prepared["availability_category"] = pd.cut(
+            prepared["availability_365"],
+            bins=[-1, 150, 300, 365],
+            labels=AVAILABILITY_CATEGORY_ORDER,
             include_lowest=True,
             right=True,
         ).astype("string")
+    elif "availability_category" in prepared.columns:
+        prepared["availability_category"] = (
+            prepared["availability_category"]
+            .astype("string")
+            .str.strip()
+            .replace(
+                {
+                    "low availability": "Low Availability",
+                    "medium availability": "Medium Availability",
+                    "high availability": "High Availability",
+                }
+            )
+        )
 
-    if "occupancy_rate" not in prepared.columns and "availability_365" in prepared.columns:
-        prepared["occupancy_rate"] = ((365 - prepared["availability_365"]) / 365 * 100).round(2)
-    elif "occupancy_rate" in prepared.columns and prepared["occupancy_rate"].dropna().max() <= 1.5:
-        prepared["occupancy_rate"] = (prepared["occupancy_rate"] * 100).round(2)
+    if "availability_efficiency" not in prepared.columns and {"price", "booking_demand"}.issubset(prepared.columns):
+        prepared["availability_efficiency"] = (prepared["price"] * prepared["booking_demand"]).astype("float64")
+
+    if (
+        "revenue_per_available_night" not in prepared.columns
+        and "availability_efficiency" in prepared.columns
+    ):
+        prepared["revenue_per_available_night"] = (
+            prepared["availability_efficiency"] / 365.0
+        ).astype("float64")
 
     return prepared
 
@@ -409,11 +422,10 @@ def prepare_eda_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return normalize_columns(_encode_frame(prepared))
 
 
-def _render_chart(title: str, fig: px.scatter, conclusion: str) -> None:
+def _render_chart(title: str, fig: px.scatter, _conclusion: str = "") -> None:
     st.subheader(title)
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(conclusion)
 
 
 def _format_column_list(columns: list[str], empty_label: str = "None") -> str:
@@ -1226,9 +1238,15 @@ def _render_pipeline_summary(
     with st.expander("8. Feature Engineering", expanded=True):
         st.write("Status: Completed")
         st.write(f"New columns: {_format_column_list(feature_engineering.get('engineered_columns', []))}")
-        st.write(f"Reference year for property_age: {feature_engineering.get('reference_year', 2022)}")
-        for definition in feature_engineering.get("definitions", []):
-            st.write(f"- {definition}")
+        feature_details = feature_engineering.get("details", [])
+        if feature_details:
+            for item in feature_details:
+                st.write(f"• {item.get('name', '')}")
+                st.write(f"  Logic: {item.get('logic', '')}")
+                st.write(f"  Cách thực hiện: {item.get('formula', '')}")
+        else:
+            for definition in feature_engineering.get("definitions", []):
+                st.write(f"- {definition}")
 
     scaling = step_metrics.get("scaling", {})
     with st.expander("9. Scaling", expanded=True):
@@ -1238,38 +1256,58 @@ def _render_pipeline_summary(
         scaled_shape = scaling.get("scaled_shape", [rows_after, columns_after])
         if isinstance(scaled_shape, list) and len(scaled_shape) == 2:
             st.write(f"Scaled dataframe shape: {scaled_shape[0]:,} rows x {scaled_shape[1]:,} columns")
+        st.write(
+            f"Passthrough columns kept raw: {_format_column_list(scaling.get('passthrough_columns', []))}"
+        )
         st.write(f"Alternative scalers noted: {_format_column_list(scaling.get('alternative_scalers', []))}")
         for note in scaling.get("notes", []):
             st.write(f"- {note}")
+        recommended_by_column = scaling.get("recommended_by_column", {})
+        if recommended_by_column:
+            recommended_table = pd.DataFrame(
+                [
+                    {"column": column, "recommended_scaling": recommendation}
+                    for column, recommendation in recommended_by_column.items()
+                ]
+            )
+            st.dataframe(recommended_table, use_container_width=True, hide_index=True)
 
     ml_ready_export = step_metrics.get("ml_ready_export", {})
-    with st.expander("10. Encoding for Machine Learning", expanded=True):
+    with st.expander("D. Encoding các cột trong DataFrame (xuất file để đưa vào học máy)", expanded=True):
         st.write("Status: Completed")
         generated_counts = ml_ready_export.get("one_hot_generated_counts", {})
         encoding_plan_rows = [
-            {"No.": 1, "Original Column": "host_id", "Data Type": "Identifier", "Encoding Method": "No encoding. Keep the raw host ID.", "Output Columns": "1 host_id column"},
-            {"No.": 2, "Original Column": "host_identity_verified", "Data Type": "Binary", "Encoding Method": "Label encode: unconfirmed -> 0, verified -> 1.", "Output Columns": "1 column"},
-            {"No.": 3, "Original Column": "neighbourhood_group", "Data Type": "Categorical", "Encoding Method": "Label encode.", "Output Columns": "1 column"},
-            {"No.": 4, "Original Column": "neighbourhood", "Data Type": "Categorical", "Encoding Method": "Label encode.", "Output Columns": "1 column"},
-            {"No.": 5, "Original Column": "instant_bookable", "Data Type": "Binary", "Encoding Method": "Label encode: false -> 0, true -> 1.", "Output Columns": "1 column"},
-            {"No.": 6, "Original Column": "cancellation_policy", "Data Type": "Categorical", "Encoding Method": "Label encode.", "Output Columns": "1 column"},
-            {"No.": 7, "Original Column": "room_type", "Data Type": "Categorical", "Encoding Method": "One-hot encode.", "Output Columns": f"{int(generated_counts.get('room_type', 0)):,} columns"},
-            {"No.": 8, "Original Column": "construction_year", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 9, "Original Column": "price", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 10, "Original Column": "minimum_nights", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 11, "Original Column": "number_of_reviews", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 12, "Original Column": "last_review", "Data Type": "Datetime", "Encoding Method": "Convert to days_since_last_review.", "Output Columns": "1 derived column"},
-            {"No.": 13, "Original Column": "review_rate_number", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 14, "Original Column": "calculated_host_listings_count", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 15, "Original Column": "availability_365", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 16, "Original Column": "listing_year", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 17, "Original Column": "property_age", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 18, "Original Column": "estimated_revenue", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 19, "Original Column": "occupancy_rate", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 20, "Original Column": "booking_flexibility_score", "Data Type": "Numeric", "Encoding Method": "No encoding. Keep numeric.", "Output Columns": "1 column"},
-            {"No.": 21, "Original Column": "customer_segment", "Data Type": "Categorical", "Encoding Method": "One-hot encode in the current pipeline.", "Output Columns": f"{int(generated_counts.get('customer_segment', 0)):,} columns"},
+            {"STT": 1, "Cột": "host_id", "Loại dữ liệu": "Chuỗi", "Encoding": "Không cần encoding, giữ nguyên dạng số hoặc chuỗi.", "Đầu ra": "1 cột host_id"},
+            {"STT": 2, "Cột": "host_identity_verified", "Loại dữ liệu": "Nhị phân (True/False)", "Encoding": 'Binary Encoding: 0 cho "unconfirmed", 1 cho "verified".', "Đầu ra": "1 cột"},
+            {"STT": 3, "Cột": "neighbourhood_group", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "Label Encoding.", "Đầu ra": "1 cột"},
+            {"STT": 4, "Cột": "neighbourhood", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "Label Encoding.", "Đầu ra": "1 cột"},
+            {"STT": 5, "Cột": "instant_bookable", "Loại dữ liệu": "Nhị phân (True/False)", "Encoding": "Binary Encoding: chuyển false thành 0 và true thành 1.", "Đầu ra": "1 cột"},
+            {"STT": 6, "Cột": "cancellation_policy", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "Label Encoding.", "Đầu ra": "1 cột"},
+            {"STT": 7, "Cột": "room_type", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "One-Hot Encoding.", "Đầu ra": f"{int(generated_counts.get('room_type', 0)):,} cột nhị phân"},
+            {"STT": 8, "Cột": "construction_year", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, bạn có thể giữ nguyên hoặc tính Property age từ Construction year.", "Đầu ra": "1 cột"},
+            {"STT": 9, "Cột": "price", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên vì đây là giá trị liên tục.", "Đầu ra": "1 cột"},
+            {"STT": 10, "Cột": "minimum_nights", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, có thể giữ nguyên hoặc binning nếu cần.", "Đầu ra": "1 cột"},
+            {"STT": 11, "Cột": "number_of_reviews", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên nếu không cần chuẩn hóa.", "Đầu ra": "1 cột"},
+            {"STT": 12, "Cột": "last_review", "Loại dữ liệu": "Thời gian (Datetime)", "Encoding": "Trích xuất thành days_since_last_review rồi bỏ cột ngày gốc.", "Đầu ra": "1 cột days_since_last_review"},
+            {"STT": 13, "Cột": "review_rate_number", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên giá trị.", "Đầu ra": "1 cột"},
+            {"STT": 14, "Cột": "calculated_host_listings_count", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên giá trị.", "Đầu ra": "1 cột"},
+            {"STT": 15, "Cột": "availability_365", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên giá trị.", "Đầu ra": "1 cột"},
         ]
         st.dataframe(pd.DataFrame(encoding_plan_rows), use_container_width=True, hide_index=True)
+        st.markdown("**Bổ sung cho các cột được tạo từ Feature Engineering**")
+        engineered_encoding_rows = [
+            {"Cột mới": "listing_year", "Cách xử lý": "Giữ nguyên numeric để phục vụ phân tích theo thời gian."},
+            {"Cột mới": "property_age", "Cách xử lý": "Giữ nguyên numeric để phục vụ so sánh độ mới cũ của bất động sản."},
+            {"Cột mới": "estimated_revenue", "Cách xử lý": "Giữ nguyên numeric để phân tích doanh thu ước lượng."},
+            {"Cột mới": "occupancy_rate", "Cách xử lý": "Giữ nguyên numeric để phân tích tỷ lệ lấp đầy."},
+            {"Cột mới": "booking_flexibility_score", "Cách xử lý": "Giữ nguyên numeric vì đây là điểm tổng hợp đã lượng hóa."},
+            {"Cột mới": "customer_segment", "Cách xử lý": f"One-Hot Encoding bổ sung, sinh ra {int(generated_counts.get('customer_segment', 0)):,} cột nếu có trong file encoded."},
+            {"Cột mới": "booking_demand", "Cách xử lý": "Giữ nguyên numeric, không cần encoding hay chuẩn hóa thêm."},
+            {"Cột mới": "availability_category", "Cách xử lý": "Ordinal Encoding: Low Availability = 0, Medium Availability = 1, High Availability = 2."},
+            {"Cột mới": "availability_efficiency", "Cách xử lý": "Giữ nguyên numeric, không cần encoding hay chuẩn hóa thêm."},
+            {"Cột mới": "revenue_per_available_night", "Cách xử lý": "Giữ nguyên numeric, không cần encoding hay chuẩn hóa thêm."},
+        ]
+        st.dataframe(pd.DataFrame(engineered_encoding_rows), use_container_width=True, hide_index=True)
 
         ml_shape = ml_ready_export.get("ml_shape", [])
         if isinstance(ml_shape, list) and len(ml_shape) == 2:
@@ -1282,17 +1320,19 @@ def _render_pipeline_summary(
         st.write(
             f"Non-numeric kept intentionally: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
         )
+        st.write(
+            "Ngoài 15 cột gốc ở bảng trên, file ML-ready còn giữ thêm các cột feature engineering. "
+            "Trong đó `customer_segment` được one-hot encoding, `availability_category` được ordinal encoding, "
+            "và các cột numeric còn lại được giữ nguyên để phục vụ mô hình hoặc phân tích tiếp theo."
+        )
 
         with st.expander("One-Hot Column Explanation", expanded=False):
             st.markdown(
-                "- `drop_first=True` means each one-hot feature drops one baseline category, so the number of generated columns equals `original category count - 1`."
+                "- `drop_first=True` means the one-hot export removes one baseline category, so the number of generated columns equals `original category count - 1`."
             )
             generated_one_hot_columns = ml_ready_export.get("one_hot_generated_columns", [])
             room_type_columns = [
                 column for column in generated_one_hot_columns if column.startswith("room_type_")
-            ]
-            customer_segment_columns = [
-                column for column in generated_one_hot_columns if column.startswith("customer_segment_")
             ]
             if generated_counts.get("room_type", 0):
                 st.markdown(
@@ -1300,22 +1340,57 @@ def _render_pipeline_summary(
                 )
                 st.write("Generated columns from `room_type`:")
                 st.write(_format_column_list(room_type_columns))
+            customer_segment_columns = [
+                column for column in generated_one_hot_columns if column.startswith("customer_segment_")
+            ]
             if generated_counts.get("customer_segment", 0):
                 st.markdown(
-                    f"- `customer_segment`: the original data has 3 categories, so after one-hot encoding with `drop_first=True`, **{int(generated_counts.get('customer_segment', 0))} columns** remain."
+                    f"- `customer_segment`: after one-hot encoding with `drop_first=True`, **{int(generated_counts.get('customer_segment', 0))} columns** remain."
                 )
                 st.write("Generated columns from `customer_segment`:")
                 st.write(_format_column_list(customer_segment_columns))
         with st.expander("Encoding Code Example", expanded=False):
             st.code(
                 """
-df["host_identity_verified"] = df["host_identity_verified"].map({"unconfirmed": 0, "verified": 1})
-df["neighbourhood_group"] = df["neighbourhood_group"].astype("category").cat.codes
-df["neighbourhood"] = df["neighbourhood"].astype("category").cat.codes
-df["instant_bookable"] = df["instant_bookable"].map({"false": 0, "true": 1})
-df["cancellation_policy"] = df["cancellation_policy"].map({"strict": 0, "moderate": 1, "flexible": 2})
-df["days_since_last_review"] = (pd.Timestamp("2022-12-31") - pd.to_datetime(df["last_review"])).dt.days
-df = pd.get_dummies(df, columns=["room_type", "customer_segment"], drop_first=True)
+encoded_df = df.copy()
+encoded_df["host_identity_verified"] = encoded_df["host_identity_verified"].map(
+    {"unconfirmed": 0, "verified": 1}
+)
+encoded_df["instant_bookable"] = encoded_df["instant_bookable"].map({"false": 0, "true": 1})
+encoded_df["neighbourhood_group"] = encoded_df["neighbourhood_group"].astype("category").cat.codes
+encoded_df["neighbourhood"] = encoded_df["neighbourhood"].astype("category").cat.codes
+encoded_df["cancellation_policy"] = encoded_df["cancellation_policy"].astype("category").cat.codes
+
+encoded_df["construction_year"] = pd.to_datetime(
+    encoded_df["construction_year"],
+    errors="coerce",
+).dt.year
+
+encoded_df["days_since_last_review"] = (
+    pd.to_datetime("today").normalize() - pd.to_datetime(encoded_df["last_review"])
+).dt.days
+encoded_df = encoded_df.drop(columns=["last_review"])
+encoded_df["availability_category"] = encoded_df["availability_category"].map({
+    "Low Availability": 0,
+    "Medium Availability": 1,
+    "High Availability": 2,
+})
+
+# Keep engineered numeric columns as-is:
+# listing_year, property_age, estimated_revenue, occupancy_rate,
+# booking_flexibility_score, booking_demand,
+# availability_efficiency, revenue_per_available_night
+
+encoded_df = pd.get_dummies(
+    encoded_df,
+    columns=["room_type", "customer_segment"],
+    drop_first=True,
+    dtype="int64",
+)
+
+# Keep numeric columns as-is:
+# price, minimum_nights, number_of_reviews, review_rate_number,
+# calculated_host_listings_count, availability_365
                 """.strip(),
                 language="python",
             )
@@ -1345,9 +1420,6 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 render_processing_steps_panel()
         return
 
-    st.title(t("eda.title"))
-    st.caption(t("eda.caption"))
-
     eda_frame = _prepare_processed_eda_frame(_frame)
     if not isinstance(eda_frame, pd.DataFrame) or eda_frame.empty:
         st.info("Please upload a CSV file in the Input Data page first to see the EDA insights.")
@@ -1355,220 +1427,211 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
 
     with st.container():
         viz_frame = eda_frame.copy()
-        if "listing_year" in viz_frame.columns:
-            viz_frame["listing_year"] = pd.to_numeric(viz_frame["listing_year"], errors="coerce")
         if "neighbourhood_group" in viz_frame.columns:
-            viz_frame["neighbourhood_group"] = (
+            viz_frame["borough_key"] = (
                 viz_frame["neighbourhood_group"].astype("string").str.strip().str.lower()
             )
-        if "customer_segment" in viz_frame.columns:
-            viz_frame["customer_segment"] = (
-                viz_frame["customer_segment"].astype("string").str.strip().str.lower()
-            )
+            viz_frame = viz_frame.loc[viz_frame["borough_key"].isin(BOROUGH_DISPLAY_ORDER)].copy()
+            viz_frame["borough_label"] = viz_frame["borough_key"].map(BOROUGH_LABEL_MAP)
         if "room_type" in viz_frame.columns:
             room_type_series = viz_frame["room_type"].astype("string").str.strip()
             viz_frame["room_type"] = room_type_series.str.lower().map(ROOM_TYPE_CANONICAL_MAP).fillna(room_type_series)
-
-        yearly_frame = viz_frame.copy()
-        if {"listing_year", "neighbourhood_group"}.issubset(yearly_frame.columns):
-            yearly_frame = yearly_frame.loc[
-                yearly_frame["listing_year"].between(2012, 2022)
-                & yearly_frame["neighbourhood_group"].isin(BOROUGH_DISPLAY_ORDER)
-            ].copy()
-
-        if {"price", "listing_year", "neighbourhood_group"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
-            price_trend = (
-                yearly_frame.groupby(["listing_year", "neighbourhood_group"], as_index=False)["price"]
-                .mean()
-                .sort_values(["listing_year", "neighbourhood_group"])
-            )
-            price_trend["listing_year"] = price_trend["listing_year"].round().astype(int)
-            price_chart = px.line(
-                price_trend,
-                x="listing_year",
-                y="price",
-                color="neighbourhood_group",
-                markers=True,
-                color_discrete_map=BOROUGH_COLOR_MAP,
-                category_orders={"neighbourhood_group": BOROUGH_DISPLAY_ORDER},
-            )
-            _render_chart(
-                "1. Average Price Trend by Neighbourhood Group (2012-2022)",
-                price_chart,
-                "Insight: Demand for stays across boroughs has increased, and average prices have risen over the last decade as well.",
-            )
-
-        if {"occupancy_rate", "listing_year", "neighbourhood_group"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
-            occupancy_trend = (
-                yearly_frame.groupby(["listing_year", "neighbourhood_group"], as_index=False)["occupancy_rate"]
-                .mean()
-                .sort_values(["listing_year", "neighbourhood_group"])
-            )
-            occupancy_trend["listing_year"] = occupancy_trend["listing_year"].round().astype(int)
-            occupancy_chart = px.line(
-                occupancy_trend,
-                x="listing_year",
-                y="occupancy_rate",
-                color="neighbourhood_group",
-                markers=True,
-                color_discrete_map=BOROUGH_COLOR_MAP,
-                category_orders={"neighbourhood_group": BOROUGH_DISPLAY_ORDER},
-            )
-            _render_chart(
-                "2. Occupancy Rate Trend by Neighbourhood Group (2012-2022)",
-                occupancy_chart,
-                "Insight: Occupancy levels have generally strengthened across boroughs, pointing to sustained demand over time.",
-            )
-
-        if {"listing_year", "estimated_revenue"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
-            revenue_year = (
-                yearly_frame.groupby("listing_year", as_index=False)["estimated_revenue"]
-                .mean()
-                .sort_values("listing_year")
-            )
-            revenue_year["listing_year"] = revenue_year["listing_year"].round().astype(int)
-            revenue_year_chart = px.bar(
-                revenue_year,
-                x="listing_year",
-                y="estimated_revenue",
-                color_discrete_sequence=[CHART_COLORS[1]],
-            )
-            _render_chart(
-                "3. Average Estimated Revenue by Year (2012-2022)",
-                revenue_year_chart,
-                "Insight: Average estimated revenue indicates clear Airbnb market growth in New York City during 2012-2022.",
-            )
-
-        if {"listing_year", "estimated_revenue", "neighbourhood_group"}.issubset(yearly_frame.columns) and not yearly_frame.empty:
-            revenue_area_year = (
-                yearly_frame.groupby(["listing_year", "neighbourhood_group"], as_index=False)["estimated_revenue"]
-                .mean()
-                .sort_values(["listing_year", "neighbourhood_group"])
-            )
-            revenue_area_year["listing_year"] = revenue_area_year["listing_year"].round().astype(int)
-            revenue_area_chart = px.bar(
-                revenue_area_year,
-                x="listing_year",
-                y="estimated_revenue",
-                color="neighbourhood_group",
-                barmode="group",
-                color_discrete_map=BOROUGH_COLOR_MAP,
-                category_orders={"neighbourhood_group": BOROUGH_DISPLAY_ORDER},
-            )
-            _render_chart(
-                "4. Average Estimated Revenue by Borough and Year",
-                revenue_area_chart,
-                "Insight: Average revenue increased across multiple boroughs, reflecting citywide expansion of the Airbnb market.",
-            )
-
-        rendered_segment_room_chart = False
-        if {"customer_segment", "estimated_revenue"}.issubset(viz_frame.columns):
-            segment_frame = viz_frame.loc[
-                viz_frame["customer_segment"].isin(CUSTOMER_SEGMENT_ORDER)
-            ].copy()
-            if not segment_frame.empty:
-                revenue_segment = (
-                    segment_frame.groupby("customer_segment", as_index=False)["estimated_revenue"]
-                    .mean()
+        if "availability_category" in viz_frame.columns:
+            viz_frame["availability_category"] = (
+                viz_frame["availability_category"]
+                .astype("string")
+                .str.strip()
+                .replace(
+                    {
+                        "low availability": "Low Availability",
+                        "medium availability": "Medium Availability",
+                        "high availability": "High Availability",
+                    }
                 )
-                revenue_segment["customer_segment"] = pd.Categorical(
-                    revenue_segment["customer_segment"],
-                    categories=CUSTOMER_SEGMENT_ORDER,
-                    ordered=True,
+            )
+
+        availability_mix = pd.DataFrame()
+        if "availability_category" in viz_frame.columns:
+            availability_mix = (
+                viz_frame["availability_category"]
+                .dropna()
+                .loc[lambda s: s.isin(AVAILABILITY_CATEGORY_ORDER)]
+                .value_counts(normalize=True)
+                .reindex(AVAILABILITY_CATEGORY_ORDER, fill_value=0.0)
+                .rename_axis("availability_category")
+                .reset_index(name="share")
+            )
+            availability_mix["share_pct"] = availability_mix["share"] * 100
+            pie_chart = px.pie(
+                availability_mix,
+                names="availability_category",
+                values="share_pct",
+                hole=0.55,
+                color="availability_category",
+                category_orders={"availability_category": AVAILABILITY_CATEGORY_ORDER},
+                color_discrete_map=AVAILABILITY_CATEGORY_COLOR_MAP,
+            )
+            dominant_category = availability_mix.sort_values("share_pct", ascending=False).iloc[0]
+            high_availability_pct = float(
+                availability_mix.loc[
+                    availability_mix["availability_category"] == "High Availability",
+                    "share_pct",
+                ].iloc[0]
+            )
+            _render_chart(
+                "1. Availability Category Distribution (Supply)",
+                pie_chart,
+                (
+                    f'Insight: {dominant_category["share_pct"]:.1f}% listings thuộc nhóm '
+                    f'"{dominant_category["availability_category"]}". Điều này cho thấy thị trường đang vận hành khá năng động, '
+                    f"với phần lớn căn hộ không còn trống nhiều ngày trong năm. Chỉ khoảng {high_availability_pct:.1f}% "
+                    "thuộc nhóm High Availability, gợi ý rằng nhóm này có thể đang gặp khó khăn hơn trong việc thu hút khách."
+                ),
+            )
+
+        area_demand = pd.DataFrame()
+        if {"borough_label", "booking_demand"}.issubset(viz_frame.columns):
+            area_demand = viz_frame.dropna(subset=["borough_label", "booking_demand"]).copy()
+            if not area_demand.empty:
+                box_chart = px.box(
+                    area_demand,
+                    x="borough_label",
+                    y="booking_demand",
+                    color="borough_label",
+                    category_orders={"borough_label": AREA_SEQUENCE},
+                    color_discrete_map={
+                        BOROUGH_LABEL_MAP[key]: color for key, color in BOROUGH_COLOR_MAP.items()
+                    },
                 )
-                revenue_segment = revenue_segment.sort_values("customer_segment")
-                revenue_segment["customer_segment_label"] = revenue_segment["customer_segment"].map(translate_customer_segment)
-                segment_color_map = {
-                    translate_customer_segment(CUSTOMER_SEGMENT_ORDER[0]): "#c95c36",
-                    translate_customer_segment(CUSTOMER_SEGMENT_ORDER[1]): "#d8a65d",
-                    translate_customer_segment(CUSTOMER_SEGMENT_ORDER[2]): "#1f3c5b",
-                }
-                segment_chart = px.bar(
-                    revenue_segment,
-                    x="customer_segment_label",
-                    y="estimated_revenue",
-                    color="customer_segment_label",
-                    labels={
-                        "customer_segment_label": t("label.customer_segment"),
-                        "estimated_revenue": t("label.estimated_revenue"),
-                    },
-                    category_orders={
-                        "customer_segment_label": [translate_customer_segment(segment) for segment in CUSTOMER_SEGMENT_ORDER],
-                    },
-                    color_discrete_map=segment_color_map,
+                booking_demand_rank = (
+                    area_demand.groupby("borough_label", as_index=False)["booking_demand"]
+                    .median()
+                    .sort_values("booking_demand", ascending=False)
+                )
+                demand_spread = (
+                    area_demand.groupby("borough_label")["booking_demand"]
+                    .agg(
+                        q1=lambda s: s.quantile(0.25),
+                        q3=lambda s: s.quantile(0.75),
+                    )
+                )
+                demand_spread["iqr"] = demand_spread["q3"] - demand_spread["q1"]
+                lead_one = booking_demand_rank.iloc[0]
+                lead_two = booking_demand_rank.iloc[1] if len(booking_demand_rank) > 1 else None
+                consistency_note = ""
+                if {"Brooklyn", "Manhattan"}.issubset(demand_spread.index):
+                    brooklyn_iqr = float(demand_spread.loc["Brooklyn", "iqr"])
+                    manhattan_iqr = float(demand_spread.loc["Manhattan", "iqr"])
+                    if brooklyn_iqr < manhattan_iqr:
+                        consistency_note = " Brooklyn có độ phân tán hẹp hơn Manhattan, nên nhu cầu cũng đồng đều hơn."
+                second_clause = (
+                    f' và {lead_two["borough_label"]} ({lead_two["booking_demand"]:.0f} đêm)'
+                    if lead_two is not None
+                    else ""
                 )
                 _render_chart(
-                    f"5. {t('eda.chart.revenue_by_segment')}",
-                    segment_chart,
-                    t("eda.chart.revenue_by_segment.insight"),
+                    "2. Booking Demand by Borough (Demand)",
+                    box_chart,
+                    (
+                        f'Insight: {lead_one["borough_label"]} dẫn đầu với trung vị khoảng {lead_one["booking_demand"]:.0f} đêm{second_clause}. '
+                        "Brooklyn và Manhattan vẫn là hai khu vực có nhu cầu đặt phòng cao và ổn định nhất."
+                        f"{consistency_note}"
+                    ),
                 )
 
-                if "room_type" in segment_frame.columns and segment_frame["room_type"].isin(ROOM_SEQUENCE).any():
-                    segment_frame = segment_frame.loc[segment_frame["room_type"].isin(ROOM_SEQUENCE)].copy()
-                    revenue_segment = (
-                        segment_frame.groupby(["customer_segment", "room_type"], as_index=False)["estimated_revenue"]
-                        .mean()
+        scatter_df = pd.DataFrame()
+        price_demand_corr = None
+        if {"price", "booking_demand", "borough_label"}.issubset(viz_frame.columns):
+            scatter_columns = ["price", "booking_demand", "borough_label"]
+            if "room_type" in viz_frame.columns:
+                scatter_columns.append("room_type")
+            scatter_df = viz_frame.loc[viz_frame["price"].between(0, 1200), scatter_columns].dropna()
+            if not scatter_df.empty:
+                scatter_chart = px.scatter(
+                    scatter_df,
+                    x="price",
+                    y="booking_demand",
+                    color="borough_label",
+                    hover_data=[column for column in ["room_type"] if column in scatter_df.columns],
+                    opacity=0.45,
+                    category_orders={"borough_label": AREA_SEQUENCE},
+                    color_discrete_map={
+                        BOROUGH_LABEL_MAP[key]: color for key, color in BOROUGH_COLOR_MAP.items()
+                    },
+                )
+                if len(scatter_df) > 1:
+                    price_demand_corr = float(scatter_df[["price", "booking_demand"]].corr().iloc[0, 1])
+                    slope, intercept = np.polyfit(
+                        scatter_df["price"].astype(float),
+                        scatter_df["booking_demand"].astype(float),
+                        1,
                     )
-                    revenue_segment["customer_segment"] = pd.Categorical(
-                        revenue_segment["customer_segment"],
-                        categories=CUSTOMER_SEGMENT_ORDER,
-                        ordered=True,
+                    trend_x = np.linspace(float(scatter_df["price"].min()), float(scatter_df["price"].max()), 100)
+                    scatter_chart.add_scatter(
+                        x=trend_x,
+                        y=slope * trend_x + intercept,
+                        mode="lines",
+                        name="Trend line",
+                        line=dict(color="#223247", width=3),
                     )
-                    revenue_segment["room_type"] = pd.Categorical(
-                        revenue_segment["room_type"],
-                        categories=ROOM_SEQUENCE,
-                        ordered=True,
-                    )
-                    revenue_segment = revenue_segment.sort_values(["customer_segment", "room_type"])
-                    revenue_segment["customer_segment_label"] = revenue_segment["customer_segment"].map(translate_customer_segment)
-                    revenue_segment["room_type_label"] = revenue_segment["room_type"].map(translate_room_type)
-                    segment_chart = px.bar(
-                        revenue_segment,
-                        x="customer_segment_label",
-                        y="estimated_revenue",
-                        color="room_type_label",
-                        barmode="group",
-                        labels={
-                            "customer_segment_label": t("label.customer_segment"),
-                            "estimated_revenue": t("label.estimated_revenue"),
-                            "room_type_label": t("label.room_type"),
-                        },
-                        category_orders={
-                            "customer_segment_label": [translate_customer_segment(segment) for segment in CUSTOMER_SEGMENT_ORDER],
-                            "room_type_label": [translate_room_type(room) for room in ROOM_SEQUENCE],
-                        },
-                        color_discrete_map={
-                            translate_room_type(room): color for room, color in ROOM_TYPE_COLOR_MAP.items()
-                        },
-                    )
-                    _render_chart(
-                        f"6. {t('eda.chart.revenue_by_segment_room')}",
-                        segment_chart,
-                        t("eda.chart.revenue_by_segment_room.insight"),
-                    )
-                    rendered_segment_room_chart = True
+                _render_chart(
+                    "3. Price vs Booking Demand (Price vs Demand)",
+                    scatter_chart,
+                    (
+                        "Insight: Đường xu hướng gần như nằm ngang trong vùng giá từ 0-1200 USD. "
+                        f"Hệ số tương quan hiện tại là {price_demand_corr:.3f} cho thấy giá gần như không tỷ lệ nghịch với nhu cầu đặt phòng. "
+                        "Nhu cầu cao vẫn xuất hiện ở nhiều mức giá khác nhau, nên vị trí và trải nghiệm có vẻ quan trọng hơn giảm giá đơn thuần."
+                        if price_demand_corr is not None
+                        else "Insight: Dữ liệu cho thấy nhu cầu vẫn xuất hiện ở nhiều mức giá khác nhau."
+                    ),
+                )
 
-        correlation_columns = [
-            column
-            for column in ["occupancy_rate", "price", "booking_flexibility_score", "review_rate_number"]
-            if column in viz_frame.columns
-        ]
-        if len(correlation_columns) >= 2:
-            corr = viz_frame[correlation_columns].corr(numeric_only=True).round(2)
-            correlation_heatmap = px.imshow(
-                corr,
-                text_auto=".2f",
-                aspect="auto",
-                color_continuous_scale=["#f4efe8", "#d8a65d", "#c95c36", "#5d2014"],
+        efficiency_matrix = pd.DataFrame()
+        best_combo_text = "n/a"
+        if {"room_type", "borough_label", "availability_efficiency"}.issubset(viz_frame.columns):
+            efficiency_matrix = (
+                viz_frame.pivot_table(
+                    index="room_type",
+                    columns="borough_label",
+                    values="availability_efficiency",
+                    aggfunc="mean",
+                )
+                .reindex(index=ROOM_SEQUENCE, columns=AREA_SEQUENCE)
             )
-            strongest_driver = "n/a"
-            if "occupancy_rate" in corr.columns:
-                occupancy_corr = corr["occupancy_rate"].drop(labels=["occupancy_rate"], errors="ignore").abs().sort_values(ascending=False)
-                if not occupancy_corr.empty:
-                    strongest_driver = str(occupancy_corr.index[0])
-            correlation_chart_number = 7 if rendered_segment_room_chart else 6
-            _render_chart(
-                f"{correlation_chart_number}. Correlation Between Occupancy Rate and Key Variables",
-                correlation_heatmap,
-                f"Insight: `{strongest_driver}` is currently the variable most strongly correlated with `occupancy_rate` in this analysis set.",
-            )
+            efficiency_values = efficiency_matrix.stack().dropna()
+            if not efficiency_values.empty:
+                top_pair = efficiency_values.idxmax()
+                top_two_pairs = efficiency_values.sort_values(ascending=False).head(2)
+                bottom_pair = efficiency_values.idxmin()
+                best_combo_text = f"{top_pair[1]} + {top_pair[0]}"
+                room_specific_notes: list[str] = []
+                for focus_room in ("Private room", "Entire home/apt"):
+                    if focus_room in efficiency_matrix.index:
+                        room_row = efficiency_matrix.loc[focus_room].dropna()
+                        if not room_row.empty:
+                            room_specific_notes.append(
+                                f"{focus_room} mạnh nhất tại {room_row.idxmax()} ({room_row.max():,.0f})"
+                            )
+                queens_hotel_note = ""
+                if "Hotel room" in efficiency_matrix.index and "Queens" in efficiency_matrix.columns:
+                    queens_hotel_value = efficiency_matrix.loc["Hotel room", "Queens"]
+                    if pd.notna(queens_hotel_value):
+                        queens_hotel_note = f" Hotel room tại Queens đang thấp nhất ở mức {queens_hotel_value:,.0f}."
+                heatmap = px.imshow(
+                    efficiency_matrix,
+                    text_auto=".0f",
+                    aspect="auto",
+                    color_continuous_scale=["#f4efe8", "#d8a65d", "#c95c36", "#5d2014"],
+                )
+                _render_chart(
+                    "4. Availability Efficiency Heatmap (Efficiency)",
+                    heatmap,
+                    (
+                        f"Insight: {top_two_pairs.index[0][1]} + {top_two_pairs.index[0][0]} ({top_two_pairs.iloc[0]:,.0f}) "
+                        f"và {top_two_pairs.index[1][1]} + {top_two_pairs.index[1][0]} ({top_two_pairs.iloc[1]:,.0f}) "
+                        "là hai điểm hiệu quả nổi bật nhất. "
+                        + (" ".join(room_specific_notes) + "." if room_specific_notes else "")
+                        + queens_hotel_note
+                        + f" Cặp thấp nhất hiện tại là {bottom_pair[1]} + {bottom_pair[0]} ({efficiency_values.loc[bottom_pair]:,.0f})."
+                    ),
+                )
