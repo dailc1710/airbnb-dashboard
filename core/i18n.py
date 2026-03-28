@@ -904,6 +904,66 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "This scaffold uses a rule-based assistant that answers questions using the current dataset summary.",
         "vi": "Bộ khung này dùng trợ lý dựa trên luật để trả lời câu hỏi bằng phần tóm tắt của bộ dữ liệu hiện tại.",
     },
+    "chatbot.settings.title": {
+        "en": "AI settings",
+        "vi": "Cài đặt AI",
+    },
+    "chatbot.settings.caption": {
+        "en": "API keys are stored only in the current session and are cleared on logout.",
+        "vi": "API key chỉ được lưu trong session hiện tại và sẽ bị xóa khi đăng xuất.",
+    },
+    "chatbot.provider.label": {
+        "en": "Assistant mode",
+        "vi": "Chế độ trợ lý",
+    },
+    "chatbot.provider.rule-based": {
+        "en": "Rule-based summary",
+        "vi": "Tóm tắt theo rule",
+    },
+    "chatbot.provider.openai": {
+        "en": "ChatGPT (OpenAI)",
+        "vi": "ChatGPT (OpenAI)",
+    },
+    "chatbot.provider.gemini": {
+        "en": "Gemini",
+        "vi": "Gemini",
+    },
+    "chatbot.provider.openai_key": {
+        "en": "OpenAI API key",
+        "vi": "OpenAI API key",
+    },
+    "chatbot.provider.gemini_key": {
+        "en": "Gemini API key",
+        "vi": "Gemini API key",
+    },
+    "chatbot.provider.network_note": {
+        "en": "If the provider call fails or the key is missing, the chatbot falls back to the local rule-based answer.",
+        "vi": "Nếu gọi provider thất bại hoặc thiếu key, chatbot sẽ tự fallback về câu trả lời rule-based cục bộ.",
+    },
+    "chatbot.provider.missing_key": {
+        "en": "{provider} is selected but the API key is empty. Falling back to the local rule-based answer.",
+        "vi": "Bạn đã chọn {provider} nhưng chưa nhập API key. Chatbot sẽ fallback về câu trả lời rule-based cục bộ.",
+    },
+    "chatbot.provider.failed": {
+        "en": "{provider} could not be reached: {error}. Falling back to the local rule-based answer.",
+        "vi": "{provider} không thể được gọi: {error}. Chatbot sẽ fallback về câu trả lời rule-based cục bộ.",
+    },
+    "chatbot.status.rule_based": {
+        "en": "Using local rule-based assistant.",
+        "vi": "Đang dùng trợ lý rule-based cục bộ.",
+    },
+    "chatbot.status.using_provider": {
+        "en": "Using {provider} API.",
+        "vi": "Đang dùng API của {provider}.",
+    },
+    "chatbot.status.fallback_missing_key": {
+        "en": "Falling back to rule-based: missing {provider} API key.",
+        "vi": "Đang fallback về rule-based: thiếu API key của {provider}.",
+    },
+    "chatbot.status.fallback_failed": {
+        "en": "Falling back to rule-based: {provider} API is unavailable.",
+        "vi": "Đang fallback về rule-based: API của {provider} hiện không khả dụng.",
+    },
     "chatbot.quick.price": {
         "en": "What does the price distribution look like?",
         "vi": "Phân phối giá trông như thế nào?",
@@ -1015,6 +1075,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "chat.answer.reviews": {
         "en": "The typical listing has {median} reviews. The top decile starts around {top_decile} reviews.",
         "vi": "Listing điển hình có {median} đánh giá. Nhóm 10% cao nhất bắt đầu từ khoảng {top_decile} đánh giá.",
+    },
+    "chat.answer.demand": {
+        "en": "Booking demand is strongest in {areas}. The overall median booking demand is {median} nights.",
+        "vi": "Nhu cầu đặt phòng mạnh nhất ở {areas}. Mức booking demand trung vị của toàn bộ dữ liệu là {median} đêm.",
     },
     "chat.answer.availability": {
         "en": "Median availability is {median} days per year, while the average is {mean} days.",

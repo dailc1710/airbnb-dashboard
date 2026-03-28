@@ -10,6 +10,16 @@ import streamlit as st
 from core.config import DATASET_PATH, SAMPLE_SOURCE_LABEL
 
 ML_IDENTIFIER_COLUMNS = {"id"}
+LEGACY_ANALYSIS_COLUMNS = {
+    "instant_bookable",
+    "cancellation_policy",
+    "listing_year",
+    "property_age",
+    "estimated_revenue",
+    "occupancy_rate",
+    "booking_flexibility_score",
+    "customer_segment",
+}
 
 
 def normalize_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -271,6 +281,9 @@ def _is_binary_numeric_series(series: pd.Series) -> bool:
 
 def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
     ml_ready = normalize_columns(frame).copy()
+    removable_legacy_columns = [column for column in sorted(LEGACY_ANALYSIS_COLUMNS) if column in ml_ready.columns]
+    if removable_legacy_columns:
+        ml_ready = ml_ready.drop(columns=removable_legacy_columns)
     dropped_identifier_columns = [column for column in sorted(ML_IDENTIFIER_COLUMNS) if column in ml_ready.columns]
     if dropped_identifier_columns:
         ml_ready = ml_ready.drop(columns=dropped_identifier_columns)
@@ -283,11 +296,6 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         "review_rate_number",
         "calculated_host_listings_count",
         "availability_365",
-        "listing_year",
-        "property_age",
-        "estimated_revenue",
-        "occupancy_rate",
-        "booking_flexibility_score",
         "booking_demand",
         "availability_efficiency",
         "revenue_per_available_night",
@@ -326,19 +334,6 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         verified = _normalize_text(ml_ready["host_identity_verified"]).fillna("unconfirmed")
         ml_ready["host_identity_verified"] = verified.map({"unconfirmed": 0, "verified": 1}).fillna(0).astype("int64")
         label_encoded_columns.append("host_identity_verified")
-
-    if "instant_bookable" in ml_ready.columns:
-        instant_series = ml_ready["instant_bookable"]
-        if pd.api.types.is_bool_dtype(instant_series):
-            ml_ready["instant_bookable"] = instant_series.astype("int64")
-        else:
-            normalized_instant = _normalize_text(instant_series).replace({"yes": "true", "no": "false"}).fillna("false")
-            ml_ready["instant_bookable"] = normalized_instant.map({"false": 0, "true": 1}).fillna(0).astype("int64")
-        label_encoded_columns.append("instant_bookable")
-
-    if "cancellation_policy" in ml_ready.columns:
-        ml_ready["cancellation_policy"], _ = _label_encode_text(ml_ready["cancellation_policy"], fill_value="unknown")
-        label_encoded_columns.append("cancellation_policy")
 
     if "neighbourhood_group" in ml_ready.columns:
         ml_ready["neighbourhood_group"], _ = _label_encode_text(ml_ready["neighbourhood_group"], fill_value="unknown")
@@ -381,11 +376,6 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
         "review_rate_number",
         "calculated_host_listings_count",
         "availability_365",
-        "listing_year",
-        "property_age",
-        "estimated_revenue",
-        "occupancy_rate",
-        "booking_flexibility_score",
         "booking_demand",
         "availability_efficiency",
         "revenue_per_available_night",
@@ -395,7 +385,7 @@ def build_ml_ready_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, o
 
     one_hot_targets = [
         column
-        for column in ["room_type", "customer_segment"]
+        for column in ["room_type"]
         if column in ml_ready.columns
     ]
     for column in one_hot_targets:

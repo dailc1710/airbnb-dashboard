@@ -27,14 +27,22 @@ DROP_COLUMNS = [
     "reviews_per_month",
     "house_rules",
     "license",
+    "instant_bookable",
+    "cancellation_policy",
+]
+LEGACY_EXCLUDED_COLUMNS = [
+    "listing_year",
+    "property_age",
+    "estimated_revenue",
+    "occupancy_rate",
+    "booking_flexibility_score",
+    "customer_segment",
 ]
 STRING_COLUMNS = [
     "host_id",
     "host_identity_verified",
     "neighbourhood_group",
     "neighbourhood",
-    "instant_bookable",
-    "cancellation_policy",
     "room_type",
 ]
 NUMERIC_COLUMNS = [
@@ -58,25 +66,14 @@ OUTLIER_COLUMNS = [
     "availability_365",
 ]
 ENGINEERED_NUMERIC_COLUMNS = [
-    "listing_year",
-    "property_age",
-    "estimated_revenue",
-    "occupancy_rate",
-    "booking_flexibility_score",
     "booking_demand",
     "availability_efficiency",
     "revenue_per_available_night",
 ]
 ENGINEERED_CATEGORICAL_COLUMNS = [
-    "customer_segment",
     "availability_category",
 ]
 ENGINEERED_COLUMNS = ENGINEERED_NUMERIC_COLUMNS + ENGINEERED_CATEGORICAL_COLUMNS
-CUSTOMER_SEGMENT_LABELS = [
-    "short stay (1-3 nights)",
-    "business/leisure (4-7 nights)",
-    "long stay (>7 nights)",
-]
 AVAILABILITY_CATEGORY_LABELS = [
     "Low Availability",
     "Medium Availability",
@@ -102,23 +99,6 @@ NEIGHBOURHOOD_GROUP_FIXES = {
     "brookyn": "brooklyn",
     "manhatan": "manhattan",
     "manhatten": "manhattan",
-}
-BOOLEAN_TEXT_MAP = {
-    "true": "true",
-    "t": "true",
-    "yes": "true",
-    "y": "true",
-    "1": "true",
-    "false": "false",
-    "f": "false",
-    "no": "false",
-    "n": "false",
-    "0": "false",
-}
-CANCELLATION_POLICY_SCORES = {
-    "flexible": 2.0,
-    "moderate": 1.0,
-    "strict": 0.0,
 }
 OUTLIER_METHODS = {
     "price": "Percentile Capping (1%, 99%)",
@@ -382,8 +362,6 @@ def _build_processing_report(
             "host_identity_verified -> fill 'unconfirmed'",
             "neighbourhood_group -> geo-mapping from neighbourhood",
             "neighbourhood -> mode by neighbourhood_group + room_type",
-            "instant_bookable -> fill 'false'",
-            "cancellation_policy -> mode by neighbourhood + room_type",
         ],
         "datetime_fill_rules": [
             "construction_year -> mode by neighbourhood + room_type",
@@ -504,48 +482,12 @@ def _build_processing_report(
                 "non_scaled_engineered_columns": NON_SCALED_NUMERIC_COLUMNS,
                 "ordinal_encoded_engineered_columns": ["availability_category"],
                 "definitions": [
-                    "listing_year = year(last_review)",
-                    "property_age = 2022 - construction_year",
-                    "estimated_revenue = (365 - availability_365) * price",
-                    "occupancy_rate = (365 - availability_365) / 365",
-                    "booking_flexibility_score = instant_bookable score + cancellation_policy score",
-                    "customer_segment = binning minimum_nights into short stay / business-leisure / long stay",
                     "booking_demand = 365 - availability_365",
                     "availability_category = cut(availability_365, [-1, 150, 300, 365]) -> Low / Medium / High Availability",
                     "availability_efficiency = price * (365 - availability_365)",
                     "revenue_per_available_night = price * (365 - availability_365) / 365",
                 ],
                 "details": [
-                    {
-                        "name": "Listing Year",
-                        "logic": "Trích xuất năm từ thời điểm đánh giá gần nhất để hỗ trợ phân tích xu hướng theo thời gian.",
-                        "formula": "listing_year = year(last_review)",
-                    },
-                    {
-                        "name": "Property Age",
-                        "logic": "Ước lượng tuổi của bất động sản từ năm xây dựng để phân tích ảnh hưởng của độ mới cũ.",
-                        "formula": "property_age = 2022 - construction_year",
-                    },
-                    {
-                        "name": "Estimated Revenue",
-                        "logic": "Ước lượng doanh thu tiềm năng dựa trên giá và số đêm đã được đặt.",
-                        "formula": "estimated_revenue = (365 - availability_365) * price",
-                    },
-                    {
-                        "name": "Occupancy Rate",
-                        "logic": "Đo tỷ lệ lấp đầy của listing dựa trên số ngày còn trống trong năm.",
-                        "formula": "occupancy_rate = (365 - availability_365) / 365",
-                    },
-                    {
-                        "name": "Booking Flexibility Score",
-                        "logic": "Tổng hợp mức linh hoạt khi đặt phòng từ khả năng đặt ngay và chính sách hủy.",
-                        "formula": "booking_flexibility_score = instant_bookable score + cancellation_policy score",
-                    },
-                    {
-                        "name": "Customer Segment",
-                        "logic": "Phân nhóm khách hàng theo thời lượng lưu trú tối thiểu để hỗ trợ đọc insight theo hành vi.",
-                        "formula": "customer_segment = binning minimum_nights into short stay / business-leisure / long stay",
-                    },
                     {
                         "name": "Booking Demand (Nhu cầu đặt phòng)",
                         "logic": "Tính toán nhu cầu đặt phòng dựa trên số đêm không sẵn có.",
@@ -615,7 +557,9 @@ def run_preprocessing_pipeline(
         duplicates_removed = rows_before_dedup - len(processed)
 
     dropped_columns = [column for column in DROP_COLUMNS if column in processed.columns]
-    processed = processed.drop(columns=DROP_COLUMNS, errors="ignore").reset_index(drop=True)
+    legacy_excluded_columns = [column for column in LEGACY_EXCLUDED_COLUMNS if column in processed.columns]
+    dropped_columns.extend(legacy_excluded_columns)
+    processed = processed.drop(columns=DROP_COLUMNS + LEGACY_EXCLUDED_COLUMNS, errors="ignore").reset_index(drop=True)
 
     processed["host_id"] = _normalize_string_series(processed["host_id"]).str.lower()
     host_id_missing_count = int(processed["host_id"].isna().sum())
@@ -624,7 +568,6 @@ def run_preprocessing_pipeline(
         processed[column] = _normalize_string_series(processed[column]).str.lower()
 
     processed["neighbourhood_group"] = processed["neighbourhood_group"].replace(NEIGHBOURHOOD_GROUP_FIXES)
-    processed["instant_bookable"] = processed["instant_bookable"].replace(BOOLEAN_TEXT_MAP)
 
     for column in NUMERIC_COLUMNS:
         processed[column] = pd.to_numeric(processed[column], errors="coerce").astype("float64")
@@ -664,18 +607,6 @@ def run_preprocessing_pipeline(
         "neighbourhood",
         ["neighbourhood_group", "room_type"],
         neighbourhood_fallback,
-    )
-
-    processed["instant_bookable"] = processed["instant_bookable"].fillna("false")
-
-    cancellation_policy_fallback = _first_mode(processed["cancellation_policy"])
-    if pd.isna(cancellation_policy_fallback):
-        cancellation_policy_fallback = "strict"
-    processed["cancellation_policy"] = _fill_object_with_group_mode(
-        processed,
-        "cancellation_policy",
-        ["neighbourhood", "room_type"],
-        cancellation_policy_fallback,
     )
 
     construction_year_fallback = _first_mode(processed["construction_year"])
@@ -801,23 +732,6 @@ def run_preprocessing_pipeline(
 
     for column in ("minimum_nights", "number_of_reviews", "review_rate_number", "calculated_host_listings_count", "availability_365"):
         processed[column] = processed[column].round().astype("float64")
-
-    processed["listing_year"] = processed["last_review"].dt.year.astype("float64")
-    construction_year_value = processed["construction_year"].dt.year.astype("float64")
-    processed["property_age"] = (DATASET_REFERENCE_YEAR - construction_year_value).clip(lower=0).astype("float64")
-    processed["estimated_revenue"] = ((365.0 - processed["availability_365"]) * processed["price"]).astype("float64")
-    processed["occupancy_rate"] = ((365.0 - processed["availability_365"]) / 365.0).astype("float64")
-    processed["booking_flexibility_score"] = (
-        processed["instant_bookable"].map({"true": 1.0, "false": 0.0}).fillna(0.0)
-        + processed["cancellation_policy"].map(CANCELLATION_POLICY_SCORES).fillna(0.0)
-    ).astype("float64")
-    processed["customer_segment"] = pd.cut(
-        processed["minimum_nights"],
-        bins=[0, 3, 7, float("inf")],
-        labels=CUSTOMER_SEGMENT_LABELS,
-        include_lowest=True,
-        right=True,
-    ).astype("string")
 
     processed["booking_demand"] = (365.0 - processed["availability_365"]).clip(lower=0).astype("float64")
     processed["availability_category"] = pd.cut(

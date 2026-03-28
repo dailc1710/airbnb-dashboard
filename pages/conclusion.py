@@ -5,41 +5,45 @@ import streamlit as st
 from core.i18n import t
 
 ACHIEVEMENT_POINTS = [
-    "Nêu bật việc hoàn thành các mục tiêu lớn, chẳng hạn như xử lý giá trị thiếu, loại bỏ ngoại lệ và mã hóa dữ liệu phân loại. Đề cập đến tác động của từng bước đến chất lượng bộ dữ liệu và sự sẵn sàng của nó cho các phân tích hoặc mô hình học máy tiếp theo.",
+    "Hoàn thành các mục tiêu tiền xử lý quan trọng như xử lý giá trị thiếu, loại bỏ hoặc kiểm soát ngoại lệ, và mã hóa dữ liệu phân loại để dữ liệu trở nên nhất quán hơn.",
+    "Các bước làm sạch và chuẩn hóa giúp nâng cao chất lượng bộ dữ liệu, giảm nhiễu trong phân tích và tạo nền tảng tốt hơn cho các mô hình học máy ở giai đoạn tiếp theo.",
+    "Toàn bộ pipeline đã biến dữ liệu thô thành dữ liệu sẵn sàng cho EDA, trực quan hóa và trích xuất insight phục vụ cho việc ra quyết định.",
 ]
 
 BENEFIT_POINTS = [
-    "Bạn có thể tập trung vào cách ứng dụng giúp đơn giản hóa quy trình xử lý dữ liệu, làm cho nó trở nên dễ tiếp cận hơn cho các nhà khoa học dữ liệu và sinh viên.",
+    "Ứng dụng giúp đơn giản hóa quy trình xử lý dữ liệu bằng cách gom các bước clean data, feature engineering, visualization và kết luận vào cùng một dashboard.",
+    "Cách trình bày trực quan giúp quy trình phân tích trở nên dễ tiếp cận hơn đối với sinh viên, người mới học dữ liệu và cả những ai cần đọc nhanh insight kinh doanh.",
+    "Nhờ đó, người dùng có thể tập trung nhiều hơn vào việc diễn giải kết quả thay vì phải xử lý thủ công từng bước trên nhiều công cụ khác nhau.",
 ]
 
 INSIGHT_GROUPS = [
     {
         "title": "Yếu tố Vị trí và Loại hình phòng",
         "weight": "Trọng tâm nhất - Khoảng 40%",
-        "summary": 'Đây là yếu tố then chốt dẫn đến kết luận rằng thị trường cạnh tranh bằng "sự phù hợp" thay vì giá cả.',
+        "summary": 'Đây là yếu tố then chốt dẫn đến kết luận rằng thị trường cạnh tranh bằng "sự phù hợp" thay vì chỉ cạnh tranh bằng giá cả.',
         "evidence": 'Biểu đồ Heatmap chỉ ra các "điểm ngọt" (sweet spot) cụ thể như Hotel Room tại Brooklyn hoặc Shared Room tại Staten Island mang lại hiệu quả cao nhất.',
-        "meaning": "Kết luận chiến lược tập trung vào việc nhà đầu tư nên chọn đúng cặp bài trùng giữa khu vực và loại hình lưu trú.",
+        "meaning": "Kết luận chiến lược là nhà đầu tư nên chọn đúng cặp bài trùng giữa khu vực và loại hình lưu trú để tối ưu hiệu quả khai thác.",
     },
     {
         "title": "Yếu tố Cầu (Booking Demand)",
         "weight": "Khoảng 25%",
-        "summary": 'Yếu tố này xác định các khu vực "vàng" để đảm bảo dòng khách ổn định.',
-        "evidence": "Biểu đồ Boxplot xác định Brooklyn và Manhattan là hai khu vực dẫn đầu về nhu cầu đặt phòng với mức trung vị rất cao (gần 300 đêm).",
-        "meaning": "Củng cố cho kết luận rằng khách hàng ưu tiên vị trí trung tâm bất kể giá cả.",
+        "summary": 'Yếu tố này xác định các khu vực "vàng" có khả năng duy trì dòng khách ổn định.',
+        "evidence": "Biểu đồ Boxplot cho thấy Brooklyn và Manhattan là hai khu vực dẫn đầu về nhu cầu đặt phòng với mức trung vị rất cao, gần 300 đêm.",
+        "meaning": "Điều này củng cố nhận định rằng khách hàng ưu tiên vị trí trung tâm và khả năng tiếp cận hơn là chỉ nhìn vào mức giá.",
     },
     {
         "title": "Yếu tố Giá (Price)",
         "weight": "Khoảng 20%",
-        "summary": 'Yếu tố này đóng vai trò "loại trừ" giả thuyết cạnh tranh bằng giá.',
-        "evidence": "Biểu đồ Scatter cho thấy đường hồi quy nằm ngang, minh chứng rằng giá không tỷ lệ nghịch với nhu cầu trong phân khúc dưới 1200 USD.",
-        "meaning": "Giúp rút ra nhận định quan trọng là khách hàng không quá nhạy cảm về giá, từ đó dịch chuyển chiến lược sang tập trung vào tiện ích và vị trí.",
+        "summary": 'Yếu tố này đóng vai trò loại trừ giả thuyết rằng thị trường chủ yếu cạnh tranh bằng giá thấp.',
+        "evidence": "Biểu đồ Scatter cho thấy đường hồi quy gần như nằm ngang, minh chứng rằng giá không tỷ lệ nghịch rõ rệt với nhu cầu trong phân khúc dưới 1,200 USD.",
+        "meaning": "Từ đó có thể rút ra rằng khách hàng không quá nhạy cảm với giá, nên chiến lược cạnh tranh cần dịch chuyển sang tiện ích, vị trí và độ phù hợp của sản phẩm.",
     },
     {
         "title": "Yếu tố Cung (Availability)",
         "weight": "Khoảng 15%",
-        "summary": "Yếu tố này xác định trạng thái sức khỏe của thị trường.",
-        "evidence": '59.5% niêm yết thuộc nhóm "Low Availability", cho thấy phòng thường xuyên có khách.',
-        "meaning": 'Dẫn đến kết luận thị trường đang ở trạng thái "khát" phòng (High occupancy), tạo cơ hội cho các căn hộ mới hoặc các phân khúc ngách.',
+        "summary": "Yếu tố này phản ánh trạng thái sức khỏe chung của thị trường lưu trú.",
+        "evidence": '59.5% niêm yết thuộc nhóm "Low Availability", cho thấy nhiều phòng thường xuyên có khách đặt.',
+        "meaning": 'Kết quả này cho thấy thị trường đang ở trạng thái hấp thụ tốt, tạo cơ hội cho các căn hộ mới hoặc các phân khúc ngách nếu được định vị đúng.',
     },
 ]
 

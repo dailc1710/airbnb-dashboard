@@ -15,7 +15,7 @@ from core.data import (
     coerce_currency,
     normalize_columns,
 )
-from core.i18n import localize_dataframe_for_display, t, translate_customer_segment, translate_room_type
+from core.i18n import localize_dataframe_for_display, t, translate_room_type
 from pages.preprocessing import render_processing_panel, render_processing_steps_panel
 from users import logout_user
 
@@ -43,7 +43,6 @@ AVAILABILITY_CATEGORY_COLOR_MAP = {
     "Medium Availability": "#c95c36",
     "High Availability": "#d8a65d",
 }
-CANCELLATION_SEQUENCE = ["flexible", "moderate", "strict", "unknown"]
 BOROUGH_DISPLAY_ORDER = ["brooklyn", "manhattan", "queens", "bronx", "staten island"]
 BOROUGH_LABEL_MAP = {
     "brooklyn": "Brooklyn",
@@ -59,11 +58,6 @@ BOROUGH_COLOR_MAP = {
     "bronx": "#6d8f71",
     "staten island": "#7b8795",
 }
-CUSTOMER_SEGMENT_ORDER = [
-    "short stay (1-3 nights)",
-    "business/leisure (4-7 nights)",
-    "long stay (>7 nights)",
-]
 NEIGHBOURHOOD_LOOKUP = {
     "Brooklyn": ["Williamsburg", "Bushwick", "Park Slope", "DUMBO"],
     "Manhattan": ["Midtown", "Chelsea", "Harlem", "SoHo"],
@@ -89,8 +83,6 @@ MISSING_VALUE_DISPLAY_ORDER = [
     "construction_year",
     "number_of_reviews",
     "country_code",
-    "instant_bookable",
-    "cancellation_policy",
     "neighbourhood_group",
     "neighbourhood",
     "long",
@@ -119,7 +111,7 @@ def _prepare_processed_eda_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if prepared.empty:
         return prepared
 
-    for column in ("neighbourhood_group", "neighbourhood", "room_type", "cancellation_policy", "availability_category"):
+    for column in ("neighbourhood_group", "neighbourhood", "room_type", "availability_category"):
         if column in prepared.columns:
             prepared[column] = prepared[column].astype("string").str.strip()
 
@@ -181,246 +173,6 @@ def _prepare_processed_eda_frame(frame: pd.DataFrame) -> pd.DataFrame:
         ).astype("float64")
 
     return prepared
-
-
-def _prepare_clean_correlation_frame(
-    frame: pd.DataFrame,
-    target_column: str = "occupancy_rate",
-    max_features: int = 14,
-) -> pd.DataFrame:
-    numeric_frame = frame.select_dtypes(include="number").copy()
-    if numeric_frame.empty:
-        return pd.DataFrame()
-
-    if target_column in numeric_frame.columns:
-        target_correlations = (
-            numeric_frame.corrwith(numeric_frame[target_column], method="pearson").abs().fillna(0.0).sort_values(ascending=False)
-        )
-        selected_columns = target_correlations.head(max_features).index.tolist()
-    else:
-        selected_columns = numeric_frame.columns[:max_features].tolist()
-
-    if not selected_columns:
-        return pd.DataFrame()
-
-    return numeric_frame[selected_columns].corr(numeric_only=True).round(2)
-
-
-def _prepare_target_correlation_frame(
-    frame: pd.DataFrame,
-    target_column: str = "availability_365",
-    min_abs_correlation: float = 0.05,
-    max_columns: int = 7,
-) -> pd.DataFrame:
-    numeric_frame = frame.select_dtypes(include="number").copy()
-    if target_column not in numeric_frame.columns or numeric_frame.empty:
-        return pd.DataFrame()
-    correlations = numeric_frame.corr()[target_column].dropna()
-    sorted_columns = correlations.abs().sort_values(ascending=False).index.tolist()
-    selected: list[str] = []
-    for column in sorted_columns:
-        if column in selected:
-            continue
-        if column == target_column or abs(correlations[column]) >= min_abs_correlation:
-            selected.append(column)
-        if len(selected) >= max_columns:
-            break
-    if target_column not in selected:
-        selected.append(target_column)
-    selected = selected[:max_columns]
-    if len(selected) <= 1:
-        return pd.DataFrame()
-    focused = numeric_frame[selected]
-    return focused.corr(numeric_only=True).round(2)
-
-
-def _prepare_base_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    prepared = normalize_columns(frame).copy().reset_index(drop=True)
-    if prepared.empty:
-        prepared = pd.DataFrame({"id": pd.Series(dtype="int64")})
-
-    row_index = np.arange(len(prepared))
-    generated_ids = pd.Series(row_index + 1, index=prepared.index, dtype="int64")
-    if "id" in prepared.columns:
-        prepared["id"] = _coerce_numeric(prepared["id"], fill_value=0).astype(int)
-        prepared.loc[prepared["id"] <= 0, "id"] = generated_ids[prepared["id"] <= 0]
-    else:
-        prepared["id"] = generated_ids
-
-    if "name" not in prepared.columns:
-        prepared["name"] = prepared["id"].map(lambda value: f"listing {value}")
-    prepared["name"] = prepared["name"].astype("string").str.strip().fillna("listing")
-
-    if "host_name" not in prepared.columns:
-        prepared["host_name"] = prepared["id"].map(lambda value: f"host {value % 28 + 1}")
-    prepared["host_name"] = prepared["host_name"].astype("string").str.strip().fillna("unknown")
-
-    if "neighbourhood_group" not in prepared.columns:
-        prepared["neighbourhood_group"] = [AREA_SEQUENCE[index % len(AREA_SEQUENCE)] for index in row_index]
-    prepared["neighbourhood_group"] = (
-        prepared["neighbourhood_group"]
-        .astype("string")
-        .str.strip()
-        .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "<NA>": pd.NA})
-        .fillna(pd.Series([AREA_SEQUENCE[index % len(AREA_SEQUENCE)] for index in row_index], index=prepared.index))
-        .str.title()
-    )
-
-    if "neighbourhood" not in prepared.columns:
-        prepared["neighbourhood"] = [
-            NEIGHBOURHOOD_LOOKUP[group][index % len(NEIGHBOURHOOD_LOOKUP[group])]
-            for index, group in enumerate(prepared["neighbourhood_group"])
-        ]
-    prepared["neighbourhood"] = prepared["neighbourhood"].astype("string").str.strip().fillna("Other")
-
-    if "room_type" not in prepared.columns:
-        prepared["room_type"] = [ROOM_SEQUENCE[index % len(ROOM_SEQUENCE)] for index in row_index]
-    prepared["room_type"] = (
-        prepared["room_type"]
-        .astype("string")
-        .str.strip()
-        .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "<NA>": pd.NA})
-        .fillna(pd.Series([ROOM_SEQUENCE[index % len(ROOM_SEQUENCE)] for index in row_index], index=prepared.index))
-    )
-
-    if "price" in prepared.columns:
-        prepared["price"] = _coerce_numeric(coerce_currency(prepared["price"]))
-    else:
-        area_base = prepared["neighbourhood_group"].map(
-            {"Brooklyn": 168, "Manhattan": 215, "Queens": 143, "Bronx": 108, "Staten Island": 126}
-        ).fillna(150)
-        room_multiplier = prepared["room_type"].map(
-            {"Entire home/apt": 1.28, "Private room": 0.82, "Shared room": 0.58, "Hotel room": 1.11}
-        ).fillna(1.0)
-        prepared["price"] = (area_base * room_multiplier * (0.92 + (prepared["id"] % 9) * 0.035)).round(2)
-
-    if "service_fee" in prepared.columns:
-        prepared["service_fee"] = _coerce_numeric(coerce_currency(prepared["service_fee"]))
-    else:
-        prepared["service_fee"] = (prepared["price"] * 0.16 + (prepared["id"] % 5) * 1.35).round(2)
-
-    if "minimum_nights" in prepared.columns:
-        prepared["minimum_nights"] = _coerce_numeric(prepared["minimum_nights"]).clip(lower=0, upper=365).round().astype(int)
-    else:
-        prepared["minimum_nights"] = ((prepared["id"] % 12) + 1).astype(int)
-
-    if "number_of_reviews" in prepared.columns:
-        prepared["number_of_reviews"] = _coerce_numeric(prepared["number_of_reviews"], fill_value=0).clip(lower=0).round().astype(int)
-    else:
-        prepared["number_of_reviews"] = (18 + (prepared["id"] % 55) * 1.4).round().astype(int)
-
-    if "review_rate_number" in prepared.columns:
-        prepared["review_rate_number"] = _coerce_numeric(prepared["review_rate_number"], fill_value=4).clip(lower=1, upper=5).round().astype(int)
-    else:
-        prepared["review_rate_number"] = ((prepared["id"] % 3) + 3).astype(int)
-
-    if "reviews_per_month" in prepared.columns:
-        prepared["reviews_per_month"] = _coerce_numeric(prepared["reviews_per_month"], fill_value=0).clip(lower=0)
-    else:
-        prepared["reviews_per_month"] = (prepared["number_of_reviews"] / 24).round(2)
-
-    if "instant_bookable" not in prepared.columns:
-        prepared["instant_bookable"] = np.where(prepared["id"] % 2 == 0, "TRUE", "FALSE")
-    prepared["instant_bookable"] = prepared["instant_bookable"].astype("string").str.upper().fillna("FALSE")
-
-    if "cancellation_policy" not in prepared.columns:
-        prepared["cancellation_policy"] = [CANCELLATION_SEQUENCE[index % len(CANCELLATION_SEQUENCE)] for index in row_index]
-    prepared["cancellation_policy"] = prepared["cancellation_policy"].astype("string").str.lower().fillna("unknown")
-
-    if "construction_year" in prepared.columns:
-        prepared["construction_year"] = _coerce_numeric(prepared["construction_year"], fill_value=2012).clip(lower=2003, upper=2022).round().astype(int)
-    else:
-        prepared["construction_year"] = 2003 + (prepared["id"] % 20)
-
-    if "calculated_host_listings_count" in prepared.columns:
-        prepared["calculated_host_listings_count"] = _coerce_numeric(
-            prepared["calculated_host_listings_count"], fill_value=1
-        ).clip(lower=1).round().astype(int)
-    else:
-        host_counts = prepared.groupby("host_name")["host_name"].transform("size").clip(lower=1)
-        prepared["calculated_host_listings_count"] = (host_counts + (prepared["id"] % 3)).clip(lower=1).astype(int)
-
-    if "last_review" in prepared.columns:
-        prepared["last_review"] = pd.to_datetime(prepared["last_review"], errors="coerce")
-    else:
-        prepared["last_review"] = pd.Timestamp("2025-01-01") - pd.to_timedelta(prepared["id"] % 120, unit="D")
-
-    return prepared
-
-
-def _apply_fallback_occupancy_model(frame: pd.DataFrame) -> pd.DataFrame:
-    modeled = frame.copy()
-
-    area_effect = modeled["neighbourhood_group"].map(
-        {"Brooklyn": 4.0, "Manhattan": 2.5, "Queens": 0.8, "Bronx": -1.9, "Staten Island": -1.0}
-    ).fillna(0.0)
-    room_effect = modeled["room_type"].map(
-        {"Entire home/apt": 2.2, "Hotel room": 1.4, "Private room": -0.5, "Shared room": -2.1}
-    ).fillna(0.0)
-    instant_effect = modeled["instant_bookable"].map({"TRUE": 0.25, "FALSE": -0.25}).fillna(0.0)
-    cancellation_effect = modeled["cancellation_policy"].map(
-        {"flexible": 0.45, "moderate": 0.15, "strict": -0.1, "unknown": 0.0}
-    ).fillna(0.0)
-
-    year_target = 61.45 + 1.15 * np.sin((modeled["construction_year"] - 2003) / 3.1)
-    price_effect = -0.015 * ((modeled["price"] - modeled["price"].median()) / modeled["price"].median() * 100)
-    service_fee_effect = -0.008 * (
-        (modeled["service_fee"] - modeled["service_fee"].median()) / modeled["service_fee"].median() * 100
-    )
-    minimum_nights_effect = -0.38 * np.log1p(modeled["minimum_nights"].clip(lower=1))
-    reviews_effect = 2.4 * np.log1p(modeled["number_of_reviews"]) / np.log1p(max(modeled["number_of_reviews"].max(), 1))
-    rating_effect = 0.35 * (modeled["review_rate_number"] - modeled["review_rate_number"].median())
-    host_scale = max(modeled["calculated_host_listings_count"].max(), 1)
-    host_effect = -2.6 * np.log1p(modeled["calculated_host_listings_count"]) / np.log1p(host_scale)
-
-    occupancy_rate = (
-        year_target
-        + area_effect
-        + room_effect
-        + instant_effect
-        + cancellation_effect
-        + price_effect
-        + service_fee_effect
-        + minimum_nights_effect
-        + reviews_effect
-        + rating_effect
-        + host_effect
-    )
-    modeled["occupancy_rate"] = occupancy_rate.clip(lower=40.0, upper=92.0).round(2)
-    modeled["availability_365"] = (365 - (modeled["occupancy_rate"] / 100 * 365)).round().clip(lower=0, upper=365).astype(int)
-    return modeled
-
-
-def _encode_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    encoded = frame.copy()
-    non_numeric_columns = encoded.select_dtypes(exclude=["number"]).columns
-    for column in non_numeric_columns:
-        if pd.api.types.is_datetime64_any_dtype(encoded[column]):
-            encoded[f"{column}_encoded"] = encoded[column].map(lambda value: value.toordinal() if pd.notna(value) else np.nan)
-        else:
-            categories = encoded[column].astype("string").fillna("Unknown")
-            encoded[f"{column}_encoded"] = pd.Categorical(categories).codes
-    return encoded
-
-
-def prepare_eda_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    prepared = _prepare_base_frame(frame)
-
-    if "availability_365" in prepared.columns:
-        availability = _coerce_numeric(prepared["availability_365"], fill_value=0).clip(lower=0, upper=365)
-        prepared["availability_365"] = availability.round().astype(int)
-
-    if "occupancy_rate" in prepared.columns:
-        prepared["occupancy_rate"] = _coerce_numeric(prepared["occupancy_rate"], fill_value=0).clip(lower=0, upper=100).round(2)
-    elif "availability_365" in prepared.columns:
-        availability = prepared["availability_365"].astype(float)
-        prepared["occupancy_rate"] = ((365 - availability) / 365 * 100).round(2)
-    else:
-        prepared = _apply_fallback_occupancy_model(prepared)
-
-    prepared["eda_source"] = "session_processed"
-    return normalize_columns(_encode_frame(prepared))
-
 
 def _render_chart(title: str, fig: px.scatter, _conclusion: str = "") -> None:
     st.subheader(title)
@@ -759,8 +511,6 @@ def _build_missing_strategy_map(
         "host_identity_verified": 'Fill "unconfirmed"',
         "neighbourhood": "Mode by neighbourhood_group + room_type",
         "neighbourhood_group": "Geo-mapping",
-        "instant_bookable": 'Fill "False"',
-        "cancellation_policy": "Mode by neighbourhood + room_type",
         "construction_year": "Mode by neighbourhood + room_type",
         "price": "Mean by neighbourhood + room_type",
         "service_fee": "Drop column",
@@ -1277,35 +1027,27 @@ def _render_pipeline_summary(
         st.write("Status: Completed")
         generated_counts = ml_ready_export.get("one_hot_generated_counts", {})
         encoding_plan_rows = [
-            {"STT": 1, "Cột": "host_id", "Loại dữ liệu": "Chuỗi", "Encoding": "Không cần encoding, giữ nguyên dạng số hoặc chuỗi.", "Đầu ra": "1 cột host_id"},
-            {"STT": 2, "Cột": "host_identity_verified", "Loại dữ liệu": "Nhị phân (True/False)", "Encoding": 'Binary Encoding: 0 cho "unconfirmed", 1 cho "verified".', "Đầu ra": "1 cột"},
-            {"STT": 3, "Cột": "neighbourhood_group", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "Label Encoding.", "Đầu ra": "1 cột"},
-            {"STT": 4, "Cột": "neighbourhood", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "Label Encoding.", "Đầu ra": "1 cột"},
-            {"STT": 5, "Cột": "instant_bookable", "Loại dữ liệu": "Nhị phân (True/False)", "Encoding": "Binary Encoding: chuyển false thành 0 và true thành 1.", "Đầu ra": "1 cột"},
-            {"STT": 6, "Cột": "cancellation_policy", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "Label Encoding.", "Đầu ra": "1 cột"},
-            {"STT": 7, "Cột": "room_type", "Loại dữ liệu": "Phân loại (Categorical)", "Encoding": "One-Hot Encoding.", "Đầu ra": f"{int(generated_counts.get('room_type', 0)):,} cột nhị phân"},
-            {"STT": 8, "Cột": "construction_year", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, bạn có thể giữ nguyên hoặc tính Property age từ Construction year.", "Đầu ra": "1 cột"},
-            {"STT": 9, "Cột": "price", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên vì đây là giá trị liên tục.", "Đầu ra": "1 cột"},
-            {"STT": 10, "Cột": "minimum_nights", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, có thể giữ nguyên hoặc binning nếu cần.", "Đầu ra": "1 cột"},
-            {"STT": 11, "Cột": "number_of_reviews", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên nếu không cần chuẩn hóa.", "Đầu ra": "1 cột"},
-            {"STT": 12, "Cột": "last_review", "Loại dữ liệu": "Thời gian (Datetime)", "Encoding": "Trích xuất thành days_since_last_review rồi bỏ cột ngày gốc.", "Đầu ra": "1 cột days_since_last_review"},
-            {"STT": 13, "Cột": "review_rate_number", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên giá trị.", "Đầu ra": "1 cột"},
-            {"STT": 14, "Cột": "calculated_host_listings_count", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên giá trị.", "Đầu ra": "1 cột"},
-            {"STT": 15, "Cột": "availability_365", "Loại dữ liệu": "Số (Numeric)", "Encoding": "Không cần encoding, giữ nguyên giá trị.", "Đầu ra": "1 cột"},
+            {"STT": 1, "Cột": "host_id", "Loại dữ liệu": "Chuỗi / định danh", "Encoding": "Giữ nguyên để theo dõi host; không xem đây là biến phân loại cần label encoding.", "Đầu ra": "1 cột host_id"},
+            {"STT": 2, "Cột": "host_identity_verified", "Loại dữ liệu": "Nhị phân", "Encoding": 'Mã hóa nhị phân: "unconfirmed" -> 0, "verified" -> 1.', "Đầu ra": "1 cột số"},
+            {"STT": 3, "Cột": "neighbourhood_group", "Loại dữ liệu": "Phân loại nhiều mức", "Encoding": "Label Encoding để gom mỗi nhóm khu vực thành một mã số duy nhất, giúp dữ liệu gọn hơn cho mô hình dạng bảng.", "Đầu ra": "1 cột số"},
+            {"STT": 4, "Cột": "neighbourhood", "Loại dữ liệu": "Phân loại nhiều mức", "Encoding": "Label Encoding để biến tên khu vực thành mã số, tránh làm tăng quá nhiều số cột trong file ML-ready.", "Đầu ra": "1 cột số"},
+            {"STT": 5, "Cột": "room_type", "Loại dữ liệu": "Phân loại danh nghĩa", "Encoding": "One-Hot Encoding vì đây là biến ít mức và không có thứ bậc, nên không phù hợp để gán mã số thứ tự.", "Đầu ra": f"{int(generated_counts.get('room_type', 0)):,} cột nhị phân"},
+            {"STT": 6, "Cột": "construction_year", "Loại dữ liệu": "Năm / Numeric", "Encoding": "Không label encode; chỉ chuyển về năm số để mô hình đọc trực tiếp.", "Đầu ra": "1 cột số"},
+            {"STT": 7, "Cột": "price", "Loại dữ liệu": "Numeric liên tục", "Encoding": "Giữ nguyên vì đây là biến số liên tục mang ý nghĩa trực tiếp.", "Đầu ra": "1 cột số"},
+            {"STT": 8, "Cột": "minimum_nights", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên sau khi làm sạch; không cần label encoding.", "Đầu ra": "1 cột số"},
+            {"STT": 9, "Cột": "number_of_reviews", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên để bảo toàn thông tin về mức độ quan tâm của khách hàng.", "Đầu ra": "1 cột số"},
+            {"STT": 10, "Cột": "last_review", "Loại dữ liệu": "Datetime", "Encoding": "Chuyển thành `days_since_last_review` rồi loại bỏ cột ngày gốc để mô hình xử lý dễ hơn.", "Đầu ra": "1 cột days_since_last_review"},
+            {"STT": 11, "Cột": "review_rate_number", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên vì giá trị đã ở dạng số có ý nghĩa thứ bậc tự nhiên.", "Đầu ra": "1 cột số"},
+            {"STT": 12, "Cột": "calculated_host_listings_count", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên để phản ánh quy mô listing của host.", "Đầu ra": "1 cột số"},
+            {"STT": 13, "Cột": "availability_365", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên vì đây là biến số quan trọng cho cung và cầu.", "Đầu ra": "1 cột số"},
         ]
         st.dataframe(pd.DataFrame(encoding_plan_rows), use_container_width=True, hide_index=True)
         st.markdown("**Bổ sung cho các cột được tạo từ Feature Engineering**")
         engineered_encoding_rows = [
-            {"Cột mới": "listing_year", "Cách xử lý": "Giữ nguyên numeric để phục vụ phân tích theo thời gian."},
-            {"Cột mới": "property_age", "Cách xử lý": "Giữ nguyên numeric để phục vụ so sánh độ mới cũ của bất động sản."},
-            {"Cột mới": "estimated_revenue", "Cách xử lý": "Giữ nguyên numeric để phân tích doanh thu ước lượng."},
-            {"Cột mới": "occupancy_rate", "Cách xử lý": "Giữ nguyên numeric để phân tích tỷ lệ lấp đầy."},
-            {"Cột mới": "booking_flexibility_score", "Cách xử lý": "Giữ nguyên numeric vì đây là điểm tổng hợp đã lượng hóa."},
-            {"Cột mới": "customer_segment", "Cách xử lý": f"One-Hot Encoding bổ sung, sinh ra {int(generated_counts.get('customer_segment', 0)):,} cột nếu có trong file encoded."},
-            {"Cột mới": "booking_demand", "Cách xử lý": "Giữ nguyên numeric, không cần encoding hay chuẩn hóa thêm."},
-            {"Cột mới": "availability_category", "Cách xử lý": "Ordinal Encoding: Low Availability = 0, Medium Availability = 1, High Availability = 2."},
-            {"Cột mới": "availability_efficiency", "Cách xử lý": "Giữ nguyên numeric, không cần encoding hay chuẩn hóa thêm."},
-            {"Cột mới": "revenue_per_available_night", "Cách xử lý": "Giữ nguyên numeric, không cần encoding hay chuẩn hóa thêm."},
+            {"Cột mới": "booking_demand", "Cách xử lý": "Giữ nguyên numeric để đọc trực tiếp số đêm đã được đặt."},
+            {"Cột mới": "availability_category", "Cách xử lý": "Ordinal Encoding vì đây là biến có thứ bậc: Low Availability = 0, Medium Availability = 1, High Availability = 2."},
+            {"Cột mới": "availability_efficiency", "Cách xử lý": "Giữ nguyên numeric để so sánh hiệu quả khai thác giữa các nhóm listing."},
+            {"Cột mới": "revenue_per_available_night", "Cách xử lý": "Giữ nguyên numeric vì đây là chỉ số doanh thu trung bình trên mỗi đêm khả dụng."},
         ]
         st.dataframe(pd.DataFrame(engineered_encoding_rows), use_container_width=True, hide_index=True)
 
@@ -1321,14 +1063,13 @@ def _render_pipeline_summary(
             f"Non-numeric kept intentionally: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
         )
         st.write(
-            "Ngoài 15 cột gốc ở bảng trên, file ML-ready còn giữ thêm các cột feature engineering. "
-            "Trong đó `customer_segment` được one-hot encoding, `availability_category` được ordinal encoding, "
-            "và các cột numeric còn lại được giữ nguyên để phục vụ mô hình hoặc phân tích tiếp theo."
+            "Tóm lại, label encoding chỉ áp dụng cho các cột phân loại nhiều mức như `neighbourhood_group` và `neighbourhood`. "
+            "`room_type` dùng one-hot encoding để tránh tạo ra thứ tự giả, còn `availability_category` dùng ordinal encoding vì bản thân biến này có mức độ thấp, trung bình và cao."
         )
 
         with st.expander("One-Hot Column Explanation", expanded=False):
             st.markdown(
-                "- `drop_first=True` means the one-hot export removes one baseline category, so the number of generated columns equals `original category count - 1`."
+                "- `drop_first=True` nghĩa là file one-hot sẽ bỏ đi một nhóm chuẩn, nên số cột sinh ra bằng `số nhóm ban đầu - 1`."
             )
             generated_one_hot_columns = ml_ready_export.get("one_hot_generated_columns", [])
             room_type_columns = [
@@ -1336,19 +1077,10 @@ def _render_pipeline_summary(
             ]
             if generated_counts.get("room_type", 0):
                 st.markdown(
-                    f"- `room_type`: the original data has 4 categories, so after one-hot encoding with `drop_first=True`, **{int(generated_counts.get('room_type', 0))} columns** remain."
+                    f"- `room_type` có 4 nhóm gốc, nên sau khi one-hot với `drop_first=True` sẽ còn **{int(generated_counts.get('room_type', 0))} cột**."
                 )
                 st.write("Generated columns from `room_type`:")
                 st.write(_format_column_list(room_type_columns))
-            customer_segment_columns = [
-                column for column in generated_one_hot_columns if column.startswith("customer_segment_")
-            ]
-            if generated_counts.get("customer_segment", 0):
-                st.markdown(
-                    f"- `customer_segment`: after one-hot encoding with `drop_first=True`, **{int(generated_counts.get('customer_segment', 0))} columns** remain."
-                )
-                st.write("Generated columns from `customer_segment`:")
-                st.write(_format_column_list(customer_segment_columns))
         with st.expander("Encoding Code Example", expanded=False):
             st.code(
                 """
@@ -1356,10 +1088,20 @@ encoded_df = df.copy()
 encoded_df["host_identity_verified"] = encoded_df["host_identity_verified"].map(
     {"unconfirmed": 0, "verified": 1}
 )
-encoded_df["instant_bookable"] = encoded_df["instant_bookable"].map({"false": 0, "true": 1})
-encoded_df["neighbourhood_group"] = encoded_df["neighbourhood_group"].astype("category").cat.codes
-encoded_df["neighbourhood"] = encoded_df["neighbourhood"].astype("category").cat.codes
-encoded_df["cancellation_policy"] = encoded_df["cancellation_policy"].astype("category").cat.codes
+
+def label_encode_text(series, fill_value="unknown"):
+    normalized = (
+        series.astype("string")
+        .str.strip()
+        .str.lower()
+        .fillna(fill_value)
+    )
+    categories = sorted(normalized.unique().tolist())
+    mapping = {value: index for index, value in enumerate(categories)}
+    return normalized.map(mapping).astype("int64")
+
+encoded_df["neighbourhood_group"] = label_encode_text(encoded_df["neighbourhood_group"])
+encoded_df["neighbourhood"] = label_encode_text(encoded_df["neighbourhood"])
 
 encoded_df["construction_year"] = pd.to_datetime(
     encoded_df["construction_year"],
@@ -1376,15 +1118,11 @@ encoded_df["availability_category"] = encoded_df["availability_category"].map({
     "High Availability": 2,
 })
 
-# Keep engineered numeric columns as-is:
-# listing_year, property_age, estimated_revenue, occupancy_rate,
-# booking_flexibility_score, booking_demand,
-# availability_efficiency, revenue_per_available_night
-
 encoded_df = pd.get_dummies(
     encoded_df,
-    columns=["room_type", "customer_segment"],
+    columns=["room_type"],
     drop_first=True,
+    prefix_sep="__",
     dtype="int64",
 )
 
