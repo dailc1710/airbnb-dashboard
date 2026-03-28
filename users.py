@@ -18,7 +18,6 @@ def initialize_session_state() -> None:
         "username": None,
         "chat_history": [],
         "chatbot_provider": "rule-based",
-        "openai_api_key": "",
         "gemini_api_key": "",
         "chatbot_status_message": "",
         "chatbot_status_tone": "info",
@@ -116,7 +115,6 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
     st.session_state["username"] = user_record["username"]
     st.session_state["chat_history"] = []
     st.session_state["chatbot_provider"] = "rule-based"
-    st.session_state["openai_api_key"] = ""
     st.session_state["gemini_api_key"] = ""
     st.session_state["chatbot_status_message"] = ""
     st.session_state["chatbot_status_tone"] = "info"
@@ -139,7 +137,6 @@ def logout_user() -> None:
     st.session_state["username"] = None
     st.session_state["chat_history"] = []
     st.session_state["chatbot_provider"] = "rule-based"
-    st.session_state["openai_api_key"] = ""
     st.session_state["gemini_api_key"] = ""
     st.session_state["chatbot_status_message"] = ""
     st.session_state["chatbot_status_tone"] = "info"

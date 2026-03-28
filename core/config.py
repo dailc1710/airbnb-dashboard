@@ -18,7 +18,7 @@ CHART_COLORS = ["#1f3c5b", "#c95c36", "#d8a65d", "#6d8f71"]
 
 PREPROCESSING_PIPELINE_STEPS = [
     {
-        "title": "A.I. Data Cleaning",
+        "title": "A.I. Làm sạch dữ liệu",
         "summary": dedent(
             """
             - Chuẩn hóa tên cột: lowercase, trim khoảng trắng thừa, thay ký tự đặc biệt bằng dấu `_`.
@@ -59,7 +59,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.II. Handling Duplicates",
+        "title": "A.II. Xử lý dữ liệu trùng lặp",
         "summary": dedent(
             """
             - Xóa các dòng trùng lặp dựa trên `id`.
@@ -73,7 +73,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.III. Feature Selection",
+        "title": "A.III. Chọn đặc trưng",
         "summary": dedent(
             """
             - Xóa các cột không dùng trong phân tích: `id`, `name`, `host_name`, `lat`, `long`,
@@ -97,7 +97,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.IV. Data Type Conversion",
+        "title": "A.IV. Chuyển đổi kiểu dữ liệu",
         "summary": dedent(
             """
             - Chuyển các cột numeric chính về `float64`.
@@ -135,7 +135,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.V.1. Handling Missing Values - Categorical",
+        "title": "A.V.1. Xử lý giá trị thiếu - Dữ liệu phân loại",
         "summary": dedent(
             """
             - `host_identity_verified`: điền `unconfirmed`.
@@ -163,7 +163,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.V.2. Handling Missing Values - Date-time",
+        "title": "A.V.2. Xử lý giá trị thiếu - Ngày giờ",
         "summary": dedent(
             """
             - `construction_year`: điền mode theo `neighbourhood + room_type`.
@@ -184,7 +184,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.V.3. Handling Missing Values - Numerical",
+        "title": "A.V.3. Xử lý giá trị thiếu - Dữ liệu số",
         "summary": dedent(
             """
             - `price`: mean theo `neighbourhood + room_type`.
@@ -230,7 +230,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "A.VI. Handling Outliers",
+        "title": "A.VI. Xử lý ngoại lệ",
         "summary": dedent(
             """
             - `price`: Percentile Capping ở ngưỡng 1% và 99%.
@@ -283,7 +283,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "B. Download Preprocessing File",
+        "title": "B. Tải file preprocessing",
         "summary": dedent(
             """
             - Xuất file `Airbnb_Data_cleaned.csv` sau toàn bộ bước preprocessing.
@@ -299,7 +299,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "C. Feature Engineering",
+        "title": "C. Tạo đặc trưng",
         "summary": dedent(
             """
             - `Booking Demand (Nhu cầu đặt phòng)`
@@ -337,7 +337,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "D. Scaling for Visualization",
+        "title": "D. Chuẩn hóa cho trực quan hóa",
         "summary": dedent(
             """
             - File `scaled` vẫn dùng `MinMaxScaler` để phục vụ dashboard visualization.
@@ -377,7 +377,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "E. Visualization",
+        "title": "E. Trực quan hóa",
         "summary": dedent(
             """
             - Pie Chart: tỷ lệ `availability_category` để đọc trạng thái cung của thị trường.
@@ -410,7 +410,7 @@ PREPROCESSING_PIPELINE_STEPS = [
         ).strip(),
     },
     {
-        "title": "F. Encoding for Machine Learning",
+        "title": "F. Mã hóa cho học máy",
         "summary": dedent(
             """
             - Giữ nguyên `host_id` vì đây là cột định danh phục vụ theo dõi host, không phải biến phân loại cần label encoding.

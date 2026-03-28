@@ -43,6 +43,11 @@ AVAILABILITY_CATEGORY_COLOR_MAP = {
     "Medium Availability": "#c95c36",
     "High Availability": "#d8a65d",
 }
+AVAILABILITY_CATEGORY_LABEL_MAP = {
+    "Low Availability": "Sẵn có thấp",
+    "Medium Availability": "Sẵn có trung bình",
+    "High Availability": "Sẵn có cao",
+}
 BOROUGH_DISPLAY_ORDER = ["brooklyn", "manhattan", "queens", "bronx", "staten island"]
 BOROUGH_LABEL_MAP = {
     "brooklyn": "Brooklyn",
@@ -180,7 +185,7 @@ def _render_chart(title: str, fig: px.scatter, _conclusion: str = "") -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _format_column_list(columns: list[str], empty_label: str = "None") -> str:
+def _format_column_list(columns: list[str], empty_label: str = "Không có") -> str:
     if not columns:
         return empty_label
     return ", ".join(columns)
@@ -410,13 +415,30 @@ def _progress_tone(percent: float) -> str:
 
 def _chip_tone(label: str) -> str:
     lowered = label.lower()
-    if "drop" in lowered:
+    if "drop" in lowered or "xóa" in lowered or "loại bỏ" in lowered:
         return "danger"
-    if "median" in lowered or "mode" in lowered:
+    if "median" in lowered or "mode" in lowered or "trung vị" in lowered:
         return "success"
-    if "condition" in lowered or "nat" in lowered or "geo" in lowered or "derive" in lowered:
+    if (
+        "condition" in lowered
+        or "nat" in lowered
+        or "geo" in lowered
+        or "derive" in lowered
+        or "điều kiện" in lowered
+        or "ánh xạ" in lowered
+        or "sinh" in lowered
+    ):
         return "info"
-    if "fill" in lowered or "false" in lowered or "other" in lowered or "unknown" in lowered or "unconfirmed" in lowered:
+    if (
+        "fill" in lowered
+        or "false" in lowered
+        or "other" in lowered
+        or "unknown" in lowered
+        or "unconfirmed" in lowered
+        or "điền" in lowered
+        or "không xác định" in lowered
+        or "chưa xác minh" in lowered
+    ):
         return "warning"
     return "neutral"
 
@@ -434,12 +456,12 @@ def _skew_chip_tone(skewness: float | None) -> str:
 
 def _missing_type_label(column: str, series: pd.Series) -> tuple[str, str]:
     if column in {"lat", "long"}:
-        return "GeoID", "geoid"
+        return "Tọa độ", "geoid"
     if column in set(OUTLIER_DISPLAY_ORDER):
-        return "Numeric", "numeric"
+        return "Số", "numeric"
     if pd.api.types.is_numeric_dtype(series):
-        return "Numeric", "numeric"
-    return "Categorical", "categorical"
+        return "Số", "numeric"
+    return "Phân loại", "categorical"
 
 
 def _prepare_profile_series(frame: pd.DataFrame, column: str) -> pd.Series:
@@ -479,6 +501,18 @@ def _choose_outlier_method(column: str, skewness: float | None) -> str:
     return "IQR Capping" if abs(float(skewness)) >= 0.5 else "Percentile Review"
 
 
+def _display_outlier_method(method: str) -> str:
+    mapping = {
+        "Percentile Capping (1%, 99%)": "Chặn theo percentile (1%, 99%)",
+        "IQR Capping": "Chặn theo IQR",
+        "Clip [0, 5]": "Giới hạn [0, 5]",
+        "Clip [0, 365]": "Giới hạn [0, 365]",
+        "Review": "Xem xét",
+        "Percentile Review": "Xem xét theo percentile",
+    }
+    return mapping.get(method, method)
+
+
 def _count_outliers(series: pd.Series, method: str) -> int:
     numeric_series = pd.to_numeric(series, errors="coerce").dropna().astype("float64")
     if numeric_series.empty or numeric_series.nunique() <= 1:
@@ -508,32 +542,32 @@ def _build_missing_strategy_map(
     dropped_columns: list[str],
 ) -> dict[str, str]:
     concise_labels = {
-        "host_identity_verified": 'Fill "unconfirmed"',
-        "neighbourhood": "Mode by neighbourhood_group + room_type",
-        "neighbourhood_group": "Geo-mapping",
-        "construction_year": "Mode by neighbourhood + room_type",
-        "price": "Mean by neighbourhood + room_type",
-        "service_fee": "Drop column",
-        "minimum_nights": "Abs, >365 -> median by group",
-        "number_of_reviews": "Median by neighbourhood + room_type",
-        "last_review": "Drop rows with missing value",
-        "reviews_per_month": "Drop column",
-        "review_rate_number": "Mode by neighbourhood + room_type",
-        "calculated_host_listings_count": "Host frequency",
-        "availability_365": "Abs, >365 -> median by group",
-        "host_id": "Generate unique fallback after host frequency fill",
-        "host_name": "Drop column",
-        "name": "Drop column",
-        "country": "Drop column",
-        "country_code": "Drop column",
-        "house_rules": "Drop column",
-        "license": "Drop column",
-        "lat": "Drop column",
-        "long": "Drop column",
-        "id": "Deduplicate, then drop",
+        "host_identity_verified": 'Điền "unconfirmed"',
+        "neighbourhood": "Mode theo neighbourhood_group + room_type",
+        "neighbourhood_group": "Ánh xạ theo địa lý",
+        "construction_year": "Mode theo neighbourhood + room_type",
+        "price": "Mean theo neighbourhood + room_type",
+        "service_fee": "Xóa cột",
+        "minimum_nights": "Lấy trị tuyệt đối, >365 -> trung vị theo nhóm",
+        "number_of_reviews": "Trung vị theo neighbourhood + room_type",
+        "last_review": "Loại dòng bị thiếu",
+        "reviews_per_month": "Xóa cột",
+        "review_rate_number": "Mode theo neighbourhood + room_type",
+        "calculated_host_listings_count": "Tần suất host",
+        "availability_365": "Lấy trị tuyệt đối, >365 -> trung vị theo nhóm",
+        "host_id": "Sinh giá trị dự phòng duy nhất sau khi điền theo tần suất host",
+        "host_name": "Xóa cột",
+        "name": "Xóa cột",
+        "country": "Xóa cột",
+        "country_code": "Xóa cột",
+        "house_rules": "Xóa cột",
+        "license": "Xóa cột",
+        "lat": "Xóa cột",
+        "long": "Xóa cột",
+        "id": "Loại trùng rồi xóa",
     }
     for column in dropped_columns:
-        concise_labels.setdefault(column, "Drop column")
+        concise_labels.setdefault(column, "Xóa cột")
     return concise_labels
 
 
@@ -562,7 +596,7 @@ def _build_missing_value_rows(
         series = before_frame[column]
         dtype_label, dtype_tone = _missing_type_label(column, series)
         profile_series = _prepare_profile_series(before_frame, column)
-        skewness = _safe_skew(profile_series) if dtype_label == "Numeric" else None
+        skewness = _safe_skew(profile_series) if dtype_tone == "numeric" else None
         rows.append(
             {
                 "column": column,
@@ -571,7 +605,7 @@ def _build_missing_value_rows(
                 "missing_count": missing_count,
                 "missing_pct": missing_pct,
                 "skewness": skewness,
-                "strategy": strategy_map.get(column, "Review manually"),
+                "strategy": strategy_map.get(column, "Cần xem xét thủ công"),
             }
         )
     return rows
@@ -594,28 +628,28 @@ def _build_missing_strategy_table(
         column = str(row["column"])
         after_missing = int(after_lookup.loc[column, "missing_values"]) if column in after_lookup.index else 0
         status = (
-            "Dropped column"
+            "Đã xóa cột"
             if column in dropped_columns or column not in after_frame.columns
-            else "Rows dropped"
+            else "Đã loại dòng"
             if column == "last_review" and int(row["missing_count"]) > 0 and after_missing == 0
-            else "Filled/Resolved"
+            else "Đã điền/xử lý"
             if after_missing == 0
-            else "Needs review"
+            else "Cần xem xét"
         )
         row_data: dict[str, object] = {
-            "Column": column,
-            "Missing Before": int(row["missing_count"]),
-            "Missing After": after_missing,
-            "Fill Strategy": str(row["strategy"]),
-            "Status": status,
+            "Cột": column,
+            "Thiếu trước xử lý": int(row["missing_count"]),
+            "Thiếu sau xử lý": after_missing,
+            "Cách xử lý": str(row["strategy"]),
+            "Trạng thái": status,
         }
         if section == "numeric":
-            row_data["Skewness"] = None if row["skewness"] is None else round(float(row["skewness"]), 3)
+            row_data["Độ lệch"] = None if row["skewness"] is None else round(float(row["skewness"]), 3)
         table_rows.append(row_data)
 
-    ordered_columns = ["Column", "Missing Before", "Missing After", "Fill Strategy", "Status"]
+    ordered_columns = ["Cột", "Thiếu trước xử lý", "Thiếu sau xử lý", "Cách xử lý", "Trạng thái"]
     if section == "numeric":
-        ordered_columns = ["Column", "Missing Before", "Missing After", "Skewness", "Fill Strategy", "Status"]
+        ordered_columns = ["Cột", "Thiếu trước xử lý", "Thiếu sau xử lý", "Độ lệch", "Cách xử lý", "Trạng thái"]
     if not table_rows:
         return pd.DataFrame(columns=ordered_columns)
     return pd.DataFrame(table_rows)[ordered_columns]
@@ -679,12 +713,12 @@ def _build_outlier_strategy_table(
             threshold_text = "< 0 or > 365"
         table_rows.append(
             {
-                "Column": column,
-                "Clip Lower": round(lower, 3),
-                "Clip Upper": round(upper, 3),
-                "Threshold": threshold_text,
-                "Adjusted Values": int(adjusted_value_counts.get(column, 0)),
-                "Applied Handling": method,
+                "Cột": column,
+                "Ngưỡng dưới": round(lower, 3),
+                "Ngưỡng trên": round(upper, 3),
+                "Điều kiện ngoại lệ": threshold_text,
+                "Số giá trị đã điều chỉnh": int(adjusted_value_counts.get(column, 0)),
+                "Cách xử lý áp dụng": _display_outlier_method(str(method)),
             }
         )
     return pd.DataFrame(table_rows)
@@ -729,11 +763,11 @@ def _render_missing_values_card(
             "</tr>"
         )
 
-    title = "Table 2 - Missing Values (Numeric)" if section == "numeric" else "Table 1 - Missing Values (Categorical)"
+    title = "Bảng 2 - Giá trị thiếu (dữ liệu số)" if section == "numeric" else "Bảng 1 - Giá trị thiếu (dữ liệu phân loại)"
     meta = (
-        f"Numeric columns only - {len(section_rows):,} columns"
+        f"Chỉ gồm cột số - {len(section_rows):,} cột"
         if section == "numeric"
-        else f"Categorical columns only - {len(section_rows):,} columns"
+        else f"Chỉ gồm cột phân loại - {len(section_rows):,} cột"
     )
     body_rows = [_render_row(row) for row in section_rows]
 
@@ -748,12 +782,12 @@ def _render_missing_values_card(
                 <table class="audit-table">
                     <thead>
                         <tr>
-                            <th>Column</th>
-                            <th>Type</th>
-                            <th>Missing</th>
-                            <th>Missing %</th>
-                            <th>Skewness</th>
-                            <th>Fill Strategy</th>
+                            <th>Cột</th>
+                            <th>Loại dữ liệu</th>
+                            <th>Số giá trị thiếu</th>
+                            <th>Tỷ lệ thiếu</th>
+                            <th>Độ lệch</th>
+                            <th>Cách xử lý</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -770,7 +804,7 @@ def _render_missing_values_card(
 def _render_outlier_card(before_frame: pd.DataFrame) -> None:
     rows = _build_outlier_rows(before_frame)
     if not rows:
-        st.info("No numeric columns available for outlier detection.")
+        st.info("Không có cột số phù hợp để kiểm tra ngoại lệ.")
         return
 
     body_rows = []
@@ -784,7 +818,7 @@ def _render_outlier_card(before_frame: pd.DataFrame) -> None:
             f"<td>{escape(_format_metric_number(row['min_value']))}</td>"
             f"<td>{escape(_format_metric_number(row['max_value']))}</td>"
             f'<td><span class="audit-chip audit-chip--{skew_tone}">{escape(skew_text)}</span></td>'
-            f'<td><span class="audit-chip audit-chip--{method_tone}">{escape(str(row["method"]))}</span></td>'
+            f'<td><span class="audit-chip audit-chip--{method_tone}">{escape(_display_outlier_method(str(row["method"])))}</span></td>'
             f'<td>{int(row["outlier_count"]):,}</td>'
             f"<td>{_render_progress_cell(float(row['outlier_pct']))}</td>"
             "</tr>"
@@ -794,20 +828,20 @@ def _render_outlier_card(before_frame: pd.DataFrame) -> None:
         f"""
         <div class="audit-card">
             <div class="audit-card__header">
-                <div class="audit-card__title">Table 2 - Outlier Detection</div>
-                <div class="audit-card__meta">Numeric columns only - {len(rows):,} columns</div>
+                <div class="audit-card__title">Bảng 3 - Phát hiện ngoại lệ</div>
+                <div class="audit-card__meta">Chỉ gồm cột số - {len(rows):,} cột</div>
             </div>
             <div class="audit-table-wrap">
                 <table class="audit-table">
                     <thead>
                         <tr>
-                            <th>Column</th>
-                            <th>Min</th>
-                            <th>Max</th>
-                            <th>Skewness</th>
-                            <th>Auto Method</th>
-                            <th>Outliers</th>
-                            <th>% Outlier</th>
+                            <th>Cột</th>
+                            <th>Nhỏ nhất</th>
+                            <th>Lớn nhất</th>
+                            <th>Độ lệch</th>
+                            <th>Cách xử lý tự động</th>
+                            <th>Số ngoại lệ</th>
+                            <th>Tỷ lệ ngoại lệ</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -837,60 +871,60 @@ def _render_pipeline_summary(
     remaining_issues = processing_report.get("remaining_issues", [])
     _inject_audit_table_styles()
 
-    st.subheader("Preprocessing Runtime Summary")
-    st.caption("This tab shows what the latest preprocessing run actually did on the uploaded dataset.")
+    st.subheader("Tóm tắt lần chạy tiền xử lý")
+    st.caption("Tab này cho biết lần chạy tiền xử lý gần nhất đã thực hiện những gì trên bộ dữ liệu được tải lên.")
 
     metric_cols = st.columns(5)
-    metric_cols[0].metric("Rows Before", f"{rows_before:,}")
-    metric_cols[1].metric("Rows After", f"{rows_after:,}")
-    metric_cols[2].metric("Columns After", f"{columns_after:,}")
-    metric_cols[3].metric("Duplicates Removed", f"{duplicates_removed:,}")
-    metric_cols[4].metric("Rows Dropped by last_review", f"{rows_dropped_last_review:,}")
+    metric_cols[0].metric("Dòng trước xử lý", f"{rows_before:,}")
+    metric_cols[1].metric("Dòng sau xử lý", f"{rows_after:,}")
+    metric_cols[2].metric("Cột sau xử lý", f"{columns_after:,}")
+    metric_cols[3].metric("Bản ghi trùng đã xóa", f"{duplicates_removed:,}")
+    metric_cols[4].metric("Dòng bị loại do `last_review`", f"{rows_dropped_last_review:,}")
 
     data_cleaning = step_metrics.get("data_cleaning", {})
-    with st.expander("1. Data Cleaning", expanded=True):
-        st.write("Status: Completed")
+    with st.expander("1. Làm sạch dữ liệu", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
         st.write(
-            "Column name normalization: "
-            + str(data_cleaning.get("column_name_normalization", "lowercase + trim + special chars -> _"))
+            "Chuẩn hóa tên cột: "
+            + str(data_cleaning.get("column_name_normalization", "lowercase + trim + ký tự đặc biệt -> _"))
         )
-        st.write(f"String columns stripped: {_format_column_list(data_cleaning.get('string_columns_stripped', []))}")
-        st.write(f"Text cleaned: {_format_column_list(data_cleaning.get('text_cleaned_columns', []))}")
-        st.write(f"Currency normalized: {_format_column_list(data_cleaning.get('currency_cleaned_columns', []))}")
+        st.write(f"Cột chuỗi đã trim: {_format_column_list(data_cleaning.get('string_columns_stripped', []))}")
+        st.write(f"Cột văn bản đã làm sạch: {_format_column_list(data_cleaning.get('text_cleaned_columns', []))}")
+        st.write(f"Cột tiền tệ đã chuẩn hóa: {_format_column_list(data_cleaning.get('currency_cleaned_columns', []))}")
 
     duplicate_handling = step_metrics.get("duplicate_handling", {})
-    with st.expander("2. Duplicate Handling", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"Target column: {duplicate_handling.get('target_column') or 'No id column found'}")
-        st.write(f"Duplicates removed: {int(duplicate_handling.get('duplicates_removed', 0)):,}")
-        st.write(f"Rows after dedup: {int(duplicate_handling.get('rows_after_dedup', rows_after)):,}")
+    with st.expander("2. Xử lý dữ liệu trùng lặp", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Cột mục tiêu: {duplicate_handling.get('target_column') or 'Không tìm thấy cột id'}")
+        st.write(f"Số bản ghi trùng đã xóa: {int(duplicate_handling.get('duplicates_removed', 0)):,}")
+        st.write(f"Số dòng sau khi loại trùng: {int(duplicate_handling.get('rows_after_dedup', rows_after)):,}")
 
     feature_selection = step_metrics.get("feature_selection", {})
-    with st.expander("3. Feature Selection", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"Dropped columns ({len(dropped_columns)}): {_format_column_list(feature_selection.get('dropped_columns', []))}")
-        st.write(f"Remaining columns: {len(feature_selection.get('remaining_columns', []))}")
+    with st.expander("3. Chọn đặc trưng", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Cột đã loại bỏ ({len(dropped_columns)}): {_format_column_list(feature_selection.get('dropped_columns', []))}")
+        st.write(f"Số cột còn lại: {len(feature_selection.get('remaining_columns', []))}")
 
     type_conversion = step_metrics.get("data_type_conversion", {})
-    with st.expander("4. Data Type Conversion", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"float64 columns: {_format_column_list(type_conversion.get('float64_columns', []))}")
-        st.write(f"Datetime columns: {_format_column_list(type_conversion.get('datetime_columns', []))}")
-        st.write(f"Lowercase string columns: {_format_column_list(type_conversion.get('lowercase_string_columns', []))}")
+    with st.expander("4. Chuyển đổi kiểu dữ liệu", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Cột `float64`: {_format_column_list(type_conversion.get('float64_columns', []))}")
+        st.write(f"Cột datetime: {_format_column_list(type_conversion.get('datetime_columns', []))}")
+        st.write(f"Cột chuỗi đã chuyển lowercase: {_format_column_list(type_conversion.get('lowercase_string_columns', []))}")
 
     missing_value_handling = step_metrics.get("missing_value_handling", {})
-    with st.expander("5. Handling Missing Values", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"Listings with missing host_id before frequency fill: {int(missing_value_handling.get('host_id_missing_count', 0)):,}")
-        st.write(f"Rows dropped because last_review is missing: {int(missing_value_handling.get('rows_dropped_missing_last_review', 0)):,}")
+    with st.expander("5. Xử lý giá trị thiếu", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Listing thiếu `host_id` trước khi điền theo tần suất: {int(missing_value_handling.get('host_id_missing_count', 0)):,}")
+        st.write(f"Số dòng bị loại vì thiếu `last_review`: {int(missing_value_handling.get('rows_dropped_missing_last_review', 0)):,}")
         st.write(
-            "Remaining nulls after preprocessing: "
+            "Số giá trị null còn lại sau tiền xử lý: "
             f"{int(missing_value_handling.get('remaining_null_count', 0)):,}"
         )
-        st.write("Categorical rules:")
+        st.write("Quy tắc cho dữ liệu phân loại:")
         for rule in missing_value_handling.get("categorical_fill_rules", []):
             st.write(f"- {rule}")
-        st.write("Datetime rules:")
+        st.write("Quy tắc cho dữ liệu ngày giờ:")
         for rule in missing_value_handling.get("datetime_fill_rules", []):
             st.write(f"- {rule}")
         if isinstance(after_frame, pd.DataFrame):
@@ -904,13 +938,13 @@ def _render_pipeline_summary(
             if not categorical_strategy_table.empty:
                 st.dataframe(categorical_strategy_table, use_container_width=True, hide_index=True)
         _render_missing_values_card(before_frame, missing_value_handling, dropped_columns, section="categorical")
-        st.write("Numeric rules:")
+        st.write("Quy tắc cho dữ liệu số:")
         for rule in missing_value_handling.get("numeric_fill_rules", []):
             st.write(f"- {rule}")
         invalid_counts = missing_value_handling.get("invalid_value_counts", {})
         if invalid_counts:
             st.write(
-                "Invalid values converted to missing before fill: "
+                "Giá trị không hợp lệ đã được chuyển thành missing trước khi điền: "
                 + ", ".join(f"{column}={int(count):,}" for column, count in invalid_counts.items())
             )
         if isinstance(after_frame, pd.DataFrame):
@@ -924,18 +958,18 @@ def _render_pipeline_summary(
             if not numeric_strategy_table.empty:
                 st.dataframe(numeric_strategy_table, use_container_width=True, hide_index=True)
         _render_missing_values_card(before_frame, missing_value_handling, dropped_columns, section="numeric")
-        st.caption("The cards highlight the original missing pattern and the fill, mapping, or row-drop decision applied by the pipeline.")
+        st.caption("Các bảng thẻ bên dưới làm rõ mẫu thiếu dữ liệu ban đầu và quyết định điền, ánh xạ hoặc loại dòng mà pipeline đã áp dụng.")
 
     outlier_handling = step_metrics.get("outlier_handling", {})
-    with st.expander("6. Handling Outliers", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"Clipped columns: {_format_column_list(outlier_handling.get('clipped_columns', []))}")
-        st.write(f"Rounded columns: {_format_column_list(outlier_handling.get('rounded_columns', []))}")
+    with st.expander("6. Xử lý ngoại lệ", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Cột đã chặn ngưỡng: {_format_column_list(outlier_handling.get('clipped_columns', []))}")
+        st.write(f"Cột đã làm tròn: {_format_column_list(outlier_handling.get('rounded_columns', []))}")
         applied_methods = outlier_handling.get("applied_methods", {})
         if applied_methods:
             st.write(
-                "Applied methods: "
-                + ", ".join(f"{column} -> {method}" for column, method in applied_methods.items())
+                "Phương pháp đã áp dụng: "
+                + ", ".join(f"{column} -> {_display_outlier_method(str(method))}" for column, method in applied_methods.items())
             )
         outlier_strategy_table = _build_outlier_strategy_table(before_frame, outlier_handling)
         if not outlier_strategy_table.empty:
@@ -951,43 +985,43 @@ def _render_pipeline_summary(
             st.dataframe(adjusted_table, use_container_width=True, hide_index=True)
         if adjusted_value_counts:
             st.caption(
-                "Adjusted values after detection: "
+                "Số giá trị đã điều chỉnh sau khi phát hiện ngoại lệ: "
                 + ", ".join(f"{column}={int(count):,}" for column, count in adjusted_value_counts.items())
             )
         _render_outlier_card(before_frame)
 
     integrity_check = step_metrics.get("integrity_check", {})
-    validation_status = "Passed" if integrity_check.get("passed", False) else "Needs attention"
+    validation_status = "Đạt" if integrity_check.get("passed", False) else "Cần lưu ý"
     st.caption(
-        "Validation check: "
+        "Kiểm tra ràng buộc: "
         f"{validation_status}. "
         f"availability_365 [0, 365]={integrity_check.get('availability_365_in_range', True)}, "
         f"minimum_nights [1, 365]={integrity_check.get('minimum_nights_in_range', True)}, "
         f"review_rate_number [0, 5]={integrity_check.get('review_rate_number_in_range', True)}."
     )
     if remaining_issues:
-        st.warning("Remaining issues: " + "; ".join(str(issue) for issue in remaining_issues))
+        st.warning("Vấn đề còn lại: " + "; ".join(str(issue) for issue in remaining_issues))
 
     download_export = step_metrics.get("download_export", {})
-    with st.expander("7. Download Preprocessing File", expanded=True):
-        st.write("Status: Completed")
+    with st.expander("7. Tải file tiền xử lý", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
         cleaned_shape = download_export.get("cleaned_shape", [rows_after, columns_after])
         scaled_shape = download_export.get("scaled_shape", [])
         encoded_shape = download_export.get("encoded_shape", [])
-        st.write(f"Cleaned file: {download_export.get('cleaned_file', 'data/Airbnb_Data_cleaned.csv')}")
+        st.write(f"Tệp đã làm sạch: {download_export.get('cleaned_file', 'data/Airbnb_Data_cleaned.csv')}")
         if isinstance(cleaned_shape, list) and len(cleaned_shape) == 2:
-            st.write(f"Cleaned dataframe shape: {cleaned_shape[0]:,} rows x {cleaned_shape[1]:,} columns")
-        st.write(f"Scaled file: {download_export.get('scaled_file', 'data/Airbnb_Data_scaled.csv')}")
+            st.write(f"Kích thước dataframe đã làm sạch: {cleaned_shape[0]:,} dòng x {cleaned_shape[1]:,} cột")
+        st.write(f"Tệp đã scale: {download_export.get('scaled_file', 'data/Airbnb_Data_scaled.csv')}")
         if isinstance(scaled_shape, list) and len(scaled_shape) == 2:
-            st.write(f"Scaled dataframe shape: {scaled_shape[0]:,} rows x {scaled_shape[1]:,} columns")
-        st.write(f"Encoded file: {download_export.get('encoded_file', 'data/Airbnb_Data_encoded.csv')}")
+            st.write(f"Kích thước dataframe đã scale: {scaled_shape[0]:,} dòng x {scaled_shape[1]:,} cột")
+        st.write(f"Tệp đã mã hóa: {download_export.get('encoded_file', 'data/Airbnb_Data_encoded.csv')}")
         if isinstance(encoded_shape, list) and len(encoded_shape) == 2:
-            st.write(f"Encoded dataframe shape: {encoded_shape[0]:,} rows x {encoded_shape[1]:,} columns")
+            st.write(f"Kích thước dataframe đã mã hóa: {encoded_shape[0]:,} dòng x {encoded_shape[1]:,} cột")
 
     feature_engineering = step_metrics.get("feature_engineering", {})
-    with st.expander("8. Feature Engineering", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"New columns: {_format_column_list(feature_engineering.get('engineered_columns', []))}")
+    with st.expander("8. Tạo đặc trưng", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Cột mới được tạo: {_format_column_list(feature_engineering.get('engineered_columns', []))}")
         feature_details = feature_engineering.get("details", [])
         if feature_details:
             for item in feature_details:
@@ -999,17 +1033,17 @@ def _render_pipeline_summary(
                 st.write(f"- {definition}")
 
     scaling = step_metrics.get("scaling", {})
-    with st.expander("9. Scaling", expanded=True):
-        st.write("Status: Completed")
-        st.write(f"Active scaler: {scaling.get('active_scaler', 'MinMaxScaler')}")
-        st.write(f"Scaled columns ({int(scaling.get('scaled_column_count', len(scaled_columns)))}): {_format_column_list(scaling.get('scaled_columns', []))}")
+    with st.expander("9. Chuẩn hóa dữ liệu", expanded=True):
+        st.write("Trạng thái: Hoàn tất")
+        st.write(f"Bộ scaler đang dùng: {scaling.get('active_scaler', 'MinMaxScaler')}")
+        st.write(f"Cột được scale ({int(scaling.get('scaled_column_count', len(scaled_columns)))}): {_format_column_list(scaling.get('scaled_columns', []))}")
         scaled_shape = scaling.get("scaled_shape", [rows_after, columns_after])
         if isinstance(scaled_shape, list) and len(scaled_shape) == 2:
-            st.write(f"Scaled dataframe shape: {scaled_shape[0]:,} rows x {scaled_shape[1]:,} columns")
+            st.write(f"Kích thước dataframe scaled: {scaled_shape[0]:,} dòng x {scaled_shape[1]:,} cột")
         st.write(
-            f"Passthrough columns kept raw: {_format_column_list(scaling.get('passthrough_columns', []))}"
+            f"Cột được giữ nguyên không scale: {_format_column_list(scaling.get('passthrough_columns', []))}"
         )
-        st.write(f"Alternative scalers noted: {_format_column_list(scaling.get('alternative_scalers', []))}")
+        st.write(f"Các scaler tham chiếu khác: {_format_column_list(scaling.get('alternative_scalers', []))}")
         for note in scaling.get("notes", []):
             st.write(f"- {note}")
         recommended_by_column = scaling.get("recommended_by_column", {})
@@ -1024,7 +1058,7 @@ def _render_pipeline_summary(
 
     ml_ready_export = step_metrics.get("ml_ready_export", {})
     with st.expander("D. Encoding các cột trong DataFrame (xuất file để đưa vào học máy)", expanded=True):
-        st.write("Status: Completed")
+        st.write("Trạng thái: Hoàn tất")
         generated_counts = ml_ready_export.get("one_hot_generated_counts", {})
         encoding_plan_rows = [
             {"STT": 1, "Cột": "host_id", "Loại dữ liệu": "Chuỗi / định danh", "Encoding": "Giữ nguyên để theo dõi host; không xem đây là biến phân loại cần label encoding.", "Đầu ra": "1 cột host_id"},
@@ -1032,14 +1066,14 @@ def _render_pipeline_summary(
             {"STT": 3, "Cột": "neighbourhood_group", "Loại dữ liệu": "Phân loại nhiều mức", "Encoding": "Label Encoding để gom mỗi nhóm khu vực thành một mã số duy nhất, giúp dữ liệu gọn hơn cho mô hình dạng bảng.", "Đầu ra": "1 cột số"},
             {"STT": 4, "Cột": "neighbourhood", "Loại dữ liệu": "Phân loại nhiều mức", "Encoding": "Label Encoding để biến tên khu vực thành mã số, tránh làm tăng quá nhiều số cột trong file ML-ready.", "Đầu ra": "1 cột số"},
             {"STT": 5, "Cột": "room_type", "Loại dữ liệu": "Phân loại danh nghĩa", "Encoding": "One-Hot Encoding vì đây là biến ít mức và không có thứ bậc, nên không phù hợp để gán mã số thứ tự.", "Đầu ra": f"{int(generated_counts.get('room_type', 0)):,} cột nhị phân"},
-            {"STT": 6, "Cột": "construction_year", "Loại dữ liệu": "Năm / Numeric", "Encoding": "Không label encode; chỉ chuyển về năm số để mô hình đọc trực tiếp.", "Đầu ra": "1 cột số"},
-            {"STT": 7, "Cột": "price", "Loại dữ liệu": "Numeric liên tục", "Encoding": "Giữ nguyên vì đây là biến số liên tục mang ý nghĩa trực tiếp.", "Đầu ra": "1 cột số"},
-            {"STT": 8, "Cột": "minimum_nights", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên sau khi làm sạch; không cần label encoding.", "Đầu ra": "1 cột số"},
-            {"STT": 9, "Cột": "number_of_reviews", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên để bảo toàn thông tin về mức độ quan tâm của khách hàng.", "Đầu ra": "1 cột số"},
+            {"STT": 6, "Cột": "construction_year", "Loại dữ liệu": "Năm / dữ liệu số", "Encoding": "Không label encode; chỉ chuyển về năm số để mô hình đọc trực tiếp.", "Đầu ra": "1 cột số"},
+            {"STT": 7, "Cột": "price", "Loại dữ liệu": "Dữ liệu số liên tục", "Encoding": "Giữ nguyên vì đây là biến số liên tục mang ý nghĩa trực tiếp.", "Đầu ra": "1 cột số"},
+            {"STT": 8, "Cột": "minimum_nights", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên sau khi làm sạch; không cần label encoding.", "Đầu ra": "1 cột số"},
+            {"STT": 9, "Cột": "number_of_reviews", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên để bảo toàn thông tin về mức độ quan tâm của khách hàng.", "Đầu ra": "1 cột số"},
             {"STT": 10, "Cột": "last_review", "Loại dữ liệu": "Datetime", "Encoding": "Chuyển thành `days_since_last_review` rồi loại bỏ cột ngày gốc để mô hình xử lý dễ hơn.", "Đầu ra": "1 cột days_since_last_review"},
-            {"STT": 11, "Cột": "review_rate_number", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên vì giá trị đã ở dạng số có ý nghĩa thứ bậc tự nhiên.", "Đầu ra": "1 cột số"},
-            {"STT": 12, "Cột": "calculated_host_listings_count", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên để phản ánh quy mô listing của host.", "Đầu ra": "1 cột số"},
-            {"STT": 13, "Cột": "availability_365", "Loại dữ liệu": "Numeric", "Encoding": "Giữ nguyên vì đây là biến số quan trọng cho cung và cầu.", "Đầu ra": "1 cột số"},
+            {"STT": 11, "Cột": "review_rate_number", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên vì giá trị đã ở dạng số có ý nghĩa thứ bậc tự nhiên.", "Đầu ra": "1 cột số"},
+            {"STT": 12, "Cột": "calculated_host_listings_count", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên để phản ánh quy mô listing của host.", "Đầu ra": "1 cột số"},
+            {"STT": 13, "Cột": "availability_365", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên vì đây là biến số quan trọng cho cung và cầu.", "Đầu ra": "1 cột số"},
         ]
         st.dataframe(pd.DataFrame(encoding_plan_rows), use_container_width=True, hide_index=True)
         st.markdown("**Bổ sung cho các cột được tạo từ Feature Engineering**")
@@ -1053,21 +1087,21 @@ def _render_pipeline_summary(
 
         ml_shape = ml_ready_export.get("ml_shape", [])
         if isinstance(ml_shape, list) and len(ml_shape) == 2:
-            st.write(f"Encoded dataframe shape: {ml_shape[0]:,} rows x {ml_shape[1]:,} columns")
+            st.write(f"Kích thước dataframe encoded: {ml_shape[0]:,} dòng x {ml_shape[1]:,} cột")
         dropped_identifier_columns = ml_ready_export.get("dropped_identifier_columns", [])
         if dropped_identifier_columns:
             st.write(
-                f"Dropped identifier columns at encoding step: {_format_column_list(dropped_identifier_columns)}"
+                f"Cột định danh bị loại ở bước encoding: {_format_column_list(dropped_identifier_columns)}"
             )
         st.write(
-            f"Non-numeric kept intentionally: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
+            f"Cột không phải số được giữ lại có chủ đích: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
         )
         st.write(
             "Tóm lại, label encoding chỉ áp dụng cho các cột phân loại nhiều mức như `neighbourhood_group` và `neighbourhood`. "
             "`room_type` dùng one-hot encoding để tránh tạo ra thứ tự giả, còn `availability_category` dùng ordinal encoding vì bản thân biến này có mức độ thấp, trung bình và cao."
         )
 
-        with st.expander("One-Hot Column Explanation", expanded=False):
+        with st.expander("Giải thích các cột One-Hot", expanded=False):
             st.markdown(
                 "- `drop_first=True` nghĩa là file one-hot sẽ bỏ đi một nhóm chuẩn, nên số cột sinh ra bằng `số nhóm ban đầu - 1`."
             )
@@ -1079,9 +1113,9 @@ def _render_pipeline_summary(
                 st.markdown(
                     f"- `room_type` có 4 nhóm gốc, nên sau khi one-hot với `drop_first=True` sẽ còn **{int(generated_counts.get('room_type', 0))} cột**."
                 )
-                st.write("Generated columns from `room_type`:")
+                st.write("Các cột được tạo từ `room_type`:")
                 st.write(_format_column_list(room_type_columns))
-        with st.expander("Encoding Code Example", expanded=False):
+        with st.expander("Ví dụ mã hóa dữ liệu", expanded=False):
             st.code(
                 """
 encoded_df = df.copy()
@@ -1134,8 +1168,8 @@ encoded_df = pd.get_dummies(
             )
 
     st.markdown("---")
-    st.write(f"Dropped columns summary: {_format_column_list(dropped_columns)}")
-    st.write(f"Scaled columns summary: {_format_column_list(scaled_columns)}")
+    st.write(f"Tóm tắt cột đã loại: {_format_column_list(dropped_columns)}")
+    st.write(f"Tóm tắt cột đã scale: {_format_column_list(scaled_columns)}")
 
 
 def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
@@ -1145,12 +1179,12 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
     if page_mode == "preprocessing":
         st.title(t("prep.title"))
         st.caption(t("prep.caption"))
-        tab_data, tab_steps = st.tabs(["Data", "Preprocessing Steps"])
+        tab_data, tab_steps = st.tabs(["Dữ liệu", "Các bước tiền xử lý"])
         with tab_data:
             render_processing_panel(_frame)
         with tab_steps:
             if processing_report is None or before_frame is None:
-                st.info("The runtime summary is not available in the current session. The step-by-step description is still shown below.")
+                st.info("Chưa có tóm tắt runtime trong session hiện tại. Mô tả từng bước vẫn được hiển thị bên dưới.")
                 render_processing_steps_panel()
             else:
                 _render_pipeline_summary(processing_report, before_frame)
@@ -1160,7 +1194,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
 
     eda_frame = _prepare_processed_eda_frame(_frame)
     if not isinstance(eda_frame, pd.DataFrame) or eda_frame.empty:
-        st.info("Please upload a CSV file in the Input Data page first to see the EDA insights.")
+        st.info("Hãy tải CSV ở trang Dữ liệu đầu vào trước để xem các biểu đồ EDA.")
         return
 
     with st.container():
@@ -1199,15 +1233,25 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 .rename_axis("availability_category")
                 .reset_index(name="share")
             )
+            availability_mix["availability_category_label"] = availability_mix["availability_category"].map(
+                AVAILABILITY_CATEGORY_LABEL_MAP
+            )
             availability_mix["share_pct"] = availability_mix["share"] * 100
             pie_chart = px.pie(
                 availability_mix,
-                names="availability_category",
+                names="availability_category_label",
                 values="share_pct",
                 hole=0.55,
-                color="availability_category",
-                category_orders={"availability_category": AVAILABILITY_CATEGORY_ORDER},
-                color_discrete_map=AVAILABILITY_CATEGORY_COLOR_MAP,
+                color="availability_category_label",
+                category_orders={
+                    "availability_category_label": [
+                        AVAILABILITY_CATEGORY_LABEL_MAP[item] for item in AVAILABILITY_CATEGORY_ORDER
+                    ]
+                },
+                color_discrete_map={
+                    AVAILABILITY_CATEGORY_LABEL_MAP[item]: color
+                    for item, color in AVAILABILITY_CATEGORY_COLOR_MAP.items()
+                },
             )
             dominant_category = availability_mix.sort_values("share_pct", ascending=False).iloc[0]
             high_availability_pct = float(
@@ -1217,13 +1261,13 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 ].iloc[0]
             )
             _render_chart(
-                "1. Availability Category Distribution (Supply)",
+                "1. Phân bố mức độ sẵn có (Cung)",
                 pie_chart,
                 (
                     f'Insight: {dominant_category["share_pct"]:.1f}% listings thuộc nhóm '
-                    f'"{dominant_category["availability_category"]}". Điều này cho thấy thị trường đang vận hành khá năng động, '
+                    f'"{dominant_category["availability_category_label"]}". Điều này cho thấy thị trường đang vận hành khá năng động, '
                     f"với phần lớn căn hộ không còn trống nhiều ngày trong năm. Chỉ khoảng {high_availability_pct:.1f}% "
-                    "thuộc nhóm High Availability, gợi ý rằng nhóm này có thể đang gặp khó khăn hơn trong việc thu hút khách."
+                    "thuộc nhóm Sẵn có cao, gợi ý rằng nhóm này có thể đang gặp khó khăn hơn trong việc thu hút khách."
                 ),
             )
 
@@ -1268,7 +1312,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                     else ""
                 )
                 _render_chart(
-                    "2. Booking Demand by Borough (Demand)",
+                    "2. Nhu cầu đặt phòng theo khu vực (Cầu)",
                     box_chart,
                     (
                         f'Insight: {lead_one["borough_label"]} dẫn đầu với trung vị khoảng {lead_one["booking_demand"]:.0f} đêm{second_clause}. '
@@ -1309,11 +1353,11 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                         x=trend_x,
                         y=slope * trend_x + intercept,
                         mode="lines",
-                        name="Trend line",
+                        name="Đường xu hướng",
                         line=dict(color="#223247", width=3),
                     )
                 _render_chart(
-                    "3. Price vs Booking Demand (Price vs Demand)",
+                    "3. Giá theo nhu cầu đặt phòng (Giá và cầu)",
                     scatter_chart,
                     (
                         "Insight: Đường xu hướng gần như nằm ngang trong vùng giá từ 0-1200 USD. "
@@ -1362,7 +1406,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                     color_continuous_scale=["#f4efe8", "#d8a65d", "#c95c36", "#5d2014"],
                 )
                 _render_chart(
-                    "4. Availability Efficiency Heatmap (Efficiency)",
+                    "4. Heatmap hiệu quả khai thác theo mức sẵn có (Hiệu quả)",
                     heatmap,
                     (
                         f"Insight: {top_two_pairs.index[0][1]} + {top_two_pairs.index[0][0]} ({top_two_pairs.iloc[0]:,.0f}) "

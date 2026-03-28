@@ -66,7 +66,7 @@ def main() -> None:
     elif page == "conclusion":
         render_conclusion_page(cleaned_data)
     elif page == "chatbot":
-        render_chatbot_page(cleaned_data)
+        render_chatbot_page(cleaned_data, source_label)
 
 
 if __name__ == "__main__":

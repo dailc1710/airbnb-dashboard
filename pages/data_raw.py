@@ -160,7 +160,7 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
             audit_frame = raw_frame
             st.error(t("raw.upload.error", error=str(exc)))
     elif isinstance(session_raw_frame, pd.DataFrame):
-        st.caption(t("raw.source.uploaded", file_name=session_raw_name or "uploaded CSV"))
+        st.caption(t("raw.source.uploaded", file_name=session_raw_name or "CSV đã tải lên"))
     else:
         st.session_state["raw_df"] = raw_frame.copy()
         st.session_state["raw_df_name"] = None
@@ -168,16 +168,16 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
 
     tab_overview, tab_sort_data = st.tabs(
         [
-            "Overview",
+            t("raw.tab.overview"),
             t("raw.tab.cleaned"),
         ]
     )
 
     with tab_overview:
         overview_metrics = st.columns(3)
-        overview_metrics[0].metric("Total Rows", f"{len(audit_frame):,}")
-        overview_metrics[1].metric("Total Columns", f"{audit_frame.shape[1]:,}")
-        overview_metrics[2].metric("Total Missing Values", f"{int(audit_frame.isna().sum().sum()):,}")
+        overview_metrics[0].metric(t("raw.metric.rows"), f"{len(audit_frame):,}")
+        overview_metrics[1].metric(t("raw.metric.columns"), f"{audit_frame.shape[1]:,}")
+        overview_metrics[2].metric("Tổng giá trị thiếu", f"{int(audit_frame.isna().sum().sum()):,}")
 
         st.subheader(t("raw.preview.title"))
         st.dataframe(localize_dataframe_for_display(audit_frame.head(50)), use_container_width=True, height=360)
@@ -197,18 +197,18 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
             y="column",
             orientation="h",
             color="missing_pct",
-            title="Null Values by Column",
+            title="Số lượng giá trị thiếu theo từng cột",
             color_continuous_scale=["#f3dcc0", "#c95c36", "#7e3120"],
         )
         null_chart.update_layout(
-            coloraxis_colorbar_title_text="Null %",
+            coloraxis_colorbar_title_text="Tỷ lệ thiếu (%)",
             margin=dict(l=10, r=10, t=50, b=10),
             yaxis=dict(categoryorder="total ascending"),
         )
         st.plotly_chart(null_chart, use_container_width=True)
 
         st.markdown("---")
-        st.header("Raw Data Audit")
+        st.header(t("raw.audit.title"))
 
         missing_data = (
             health_table.rename(columns={"missing_pct": "missing_percent"})
@@ -220,24 +220,24 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
             missing_data,
             x="column",
             y="missing_percent",
-            title="Phần Trăm Giá Trị Thiếu Theo Từng Cột (Missing Values)",
-            labels={"column": "Column Name", "missing_percent": "Phần trăm (%)"},
+            title="Phần trăm giá trị thiếu theo từng cột",
+            labels={"column": "Tên cột", "missing_percent": "Phần trăm (%)"},
             text=missing_data["missing_percent"].apply(lambda x: f"{x:.2f}%"),
             color_discrete_sequence=["#440154"]
         )
         st.plotly_chart(fig1, use_container_width=True)
 
-        st.subheader("Ma Trận Giá Trị Thiếu (Missing Data)")
+        st.subheader("Ma trận giá trị thiếu")
         sample_frame = audit_frame.sample(n=min(len(audit_frame), 1000), random_state=42).sort_index()
         null_matrix = sample_frame.isnull().astype(int)
         fig2 = px.imshow(
             null_matrix,
-            labels=dict(x="Column Names", y="Số dòng dữ liệu", color="Missing"),
+            labels=dict(x="Tên cột", y="Số dòng dữ liệu", color="Thiếu dữ liệu"),
             color_continuous_scale=["#440154", "#fde725"]
         )
-        fig2.update_traces(hovertemplate='Column: %{x}<br>Row: %{y}<br>Missing: %{z}')
+        fig2.update_traces(hovertemplate='Cột: %{x}<br>Dòng: %{y}<br>Thiếu dữ liệu: %{z}')
         fig2.update_layout(
-            title_text="Ma Trận Giá Trị Thiếu (Missing Data)",
+            title_text="Ma trận giá trị thiếu",
         )
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -253,20 +253,20 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
                 melted_frame,
                 x="value",
                 y="variable",
-                title="Box Plot - Nhận Diện Outliers (Giá trị ngoại lai)",
-                labels={"variable": "Column", "value": "Giá trị"},
+                title="Boxplot nhận diện ngoại lệ",
+                labels={"variable": "Cột", "value": "Giá trị"},
                 orientation="h",
                 color="variable",
             )
             st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.info("No numerical columns found for outlier detection.")
+            st.info("Không tìm thấy cột số để nhận diện ngoại lệ.")
     
     with tab_sort_data:
         st.subheader(t("raw.cleaned.title"))
         processed_frame = st.session_state.get("processed_df")
         if not isinstance(processed_frame, pd.DataFrame):
-            st.info("Upload CSV để chạy preprocessing tự động. Phần pipeline chi tiết nằm ở tab Preprocessing bên sidebar.")
+            st.info("Hãy tải CSV để chạy pipeline tiền xử lý tự động. Phần chi tiết nằm ở tab Tiền xử lý trên sidebar.")
             return
 
         filtered = filter_dataframe(processed_frame)

@@ -67,16 +67,16 @@ def _render_download_outputs(df_cleaned: pd.DataFrame, df_ml_ready: pd.DataFrame
     cleaned_csv = df_cleaned.to_csv(index=False).encode("utf-8")
     ml_csv = df_ml_ready.to_csv(index=False).encode("utf-8")
 
-    st.subheader("Download preprocessing outputs")
+    st.subheader("Tải đầu ra tiền xử lý")
     st.caption(
-        "File clean là đầu ra chính sau toàn bộ bước preprocessing và feature engineering. "
-        "Bản encoded giữ để đưa vào học máy."
+        "Tệp đã làm sạch là đầu ra chính sau toàn bộ bước tiền xử lý và tạo đặc trưng. "
+        "Bản đã mã hóa được giữ lại để đưa vào học máy."
     )
 
     col1, col2 = st.columns(2)
     with col1:
         st.download_button(
-            label="Download cleaned data",
+            label="Tải dữ liệu đã làm sạch",
             data=cleaned_csv,
             file_name="Airbnb_Data_cleaned.csv",
             mime="text/csv",
@@ -85,7 +85,7 @@ def _render_download_outputs(df_cleaned: pd.DataFrame, df_ml_ready: pd.DataFrame
         )
     with col2:
         st.download_button(
-            label="Download encoded file",
+            label="Tải tệp đã mã hóa",
             data=ml_csv,
             file_name="Airbnb_Data_encoded.csv",
             mime="text/csv",
@@ -93,8 +93,8 @@ def _render_download_outputs(df_cleaned: pd.DataFrame, df_ml_ready: pd.DataFrame
         )
 
     st.caption(
-        "File scaled vẫn được tạo nội bộ cho visualization bằng MinMaxScaler trên các cột numeric đã chọn. "
-        "Các feature mới như booking_demand, availability_efficiency và revenue_per_available_night được giữ raw."
+        "Tệp đã chuẩn hóa vẫn được tạo nội bộ cho trực quan hóa bằng MinMaxScaler trên các cột số đã chọn. "
+        "Các feature mới như booking_demand, availability_efficiency và revenue_per_available_night được giữ nguyên."
     )
 
 
@@ -111,47 +111,47 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
         or not isinstance(df_scaled, pd.DataFrame)
         or not isinstance(df_ml_ready, pd.DataFrame)
     ):
-        st.info("Upload a CSV file in Input Data first. Preprocessing runs automatically, then the cleaned result appears in this tab.")
+        st.info("Hãy tải CSV ở trang Dữ liệu đầu vào trước. Tiền xử lý sẽ chạy tự động và kết quả đã làm sạch sẽ xuất hiện tại tab này.")
         return
 
     def _build_clean_schema_table(frame: pd.DataFrame) -> pd.DataFrame:
         return (
             pd.DataFrame(
                 {
-                    "column": frame.columns,
-                    "dtype_after_clean": frame.dtypes.astype(str).tolist(),
-                    "non_null_rows": frame.notna().sum().tolist(),
-                    "missing_after_clean": frame.isna().sum().tolist(),
+                    "Cột": frame.columns,
+                    "Kiểu dữ liệu sau xử lý": frame.dtypes.astype(str).tolist(),
+                    "Số dòng không rỗng": frame.notna().sum().tolist(),
+                    "Giá trị thiếu sau xử lý": frame.isna().sum().tolist(),
                 }
             )
-            .sort_values(["missing_after_clean", "column"], ascending=[False, True])
+            .sort_values(["Giá trị thiếu sau xử lý", "Cột"], ascending=[False, True])
             .reset_index(drop=True)
         )
 
     def _build_missing_fill_audit_table(before_df: pd.DataFrame, after_df: pd.DataFrame) -> pd.DataFrame:
         before_missing = build_missing_table(before_df).rename(
-            columns={"missing_values": "missing_before", "missing_pct": "missing_pct_before"}
+            columns={"column": "Cột", "missing_values": "Thiếu trước xử lý", "missing_pct": "Tỷ lệ thiếu trước xử lý"}
         )
         after_missing = build_missing_table(after_df).rename(
-            columns={"missing_values": "missing_after", "missing_pct": "missing_pct_after"}
+            columns={"column": "Cột", "missing_values": "Thiếu sau xử lý", "missing_pct": "Tỷ lệ thiếu sau xử lý"}
         )
-        merged = before_missing.merge(after_missing, on="column", how="outer").fillna(0)
-        merged["filled_count"] = (merged["missing_before"] - merged["missing_after"]).clip(lower=0).astype(int)
-        merged["resolution"] = merged.apply(
+        merged = before_missing.merge(after_missing, on="Cột", how="outer").fillna(0)
+        merged["Số giá trị đã xử lý"] = (merged["Thiếu trước xử lý"] - merged["Thiếu sau xử lý"]).clip(lower=0).astype(int)
+        merged["Trạng thái"] = merged.apply(
             lambda row: (
-                "Dropped column"
-                if row["column"] not in after_df.columns
-                else "Rows dropped"
-                if row["column"] == "last_review" and int(row["missing_before"]) > 0 and int(row["missing_after"]) == 0
-                else "Filled/Resolved"
-                if int(row["missing_after"]) == 0
-                else "Needs review"
+                "Đã xóa cột"
+                if row["Cột"] not in after_df.columns
+                else "Đã loại dòng"
+                if row["Cột"] == "last_review" and int(row["Thiếu trước xử lý"]) > 0 and int(row["Thiếu sau xử lý"]) == 0
+                else "Đã điền/xử lý"
+                if int(row["Thiếu sau xử lý"]) == 0
+                else "Cần xem xét"
             ),
             axis=1,
         )
-        merged = merged.loc[(merged["missing_before"] > 0) | (merged["missing_after"] > 0)].copy()
-        merged[["missing_before", "missing_after"]] = merged[["missing_before", "missing_after"]].astype(int)
-        return merged.sort_values(["missing_before", "column"], ascending=[False, True]).reset_index(drop=True)
+        merged = merged.loc[(merged["Thiếu trước xử lý"] > 0) | (merged["Thiếu sau xử lý"] > 0)].copy()
+        merged[["Thiếu trước xử lý", "Thiếu sau xử lý"]] = merged[["Thiếu trước xử lý", "Thiếu sau xử lý"]].astype(int)
+        return merged.sort_values(["Thiếu trước xử lý", "Cột"], ascending=[False, True]).reset_index(drop=True)
 
     rows_after = int(processing_report.get("rows_after", len(df_cleaned)))
     columns_after = int(processing_report.get("columns_after", df_cleaned.shape[1]))
@@ -159,27 +159,27 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
     rows_dropped_last_review = int(processing_report.get("rows_dropped_missing_last_review", 0))
     remaining_missing = int(df_cleaned.isna().sum().sum())
 
-    st.success("Preprocessing completed successfully.")
+    st.success("Tiền xử lý đã hoàn tất.")
     _render_download_outputs(df_cleaned, df_ml_ready)
 
     metric_cols = st.columns(5)
-    metric_cols[0].metric("Rows after clean", f"{rows_after:,}")
-    metric_cols[1].metric("Columns after clean", f"{columns_after:,}")
-    metric_cols[2].metric("Duplicates removed", f"{duplicates_removed:,}")
-    metric_cols[3].metric("Rows dropped by last_review", f"{rows_dropped_last_review:,}")
-    metric_cols[4].metric("Missing after clean", f"{remaining_missing:,}")
+    metric_cols[0].metric("Dòng sau làm sạch", f"{rows_after:,}")
+    metric_cols[1].metric("Cột sau làm sạch", f"{columns_after:,}")
+    metric_cols[2].metric("Bản ghi trùng đã xóa", f"{duplicates_removed:,}")
+    metric_cols[3].metric("Dòng bị loại do `last_review`", f"{rows_dropped_last_review:,}")
+    metric_cols[4].metric("Giá trị thiếu sau làm sạch", f"{remaining_missing:,}")
 
-    st.subheader("Dữ liệu sau preprocessing")
-    st.caption("Bảng dưới đây là dữ liệu sau toàn bộ bước clean, fill missing, outlier handling, feature engineering và chưa scale.")
+    st.subheader("Dữ liệu sau tiền xử lý")
+    st.caption("Bảng dưới đây là dữ liệu sau toàn bộ bước làm sạch, xử lý thiếu, xử lý ngoại lệ, tạo đặc trưng và chưa được scale.")
     st.dataframe(localize_dataframe_for_display(df_cleaned.head(100)), use_container_width=True, height=420)
 
     schema_col, missing_col = st.columns(2)
     with schema_col:
-        st.subheader("Bảng 1. Schema sau khi clean")
+        st.subheader("Bảng 1. Schema sau làm sạch")
         st.dataframe(_build_clean_schema_table(df_cleaned), use_container_width=True, hide_index=True, height=420)
 
     with missing_col:
-        st.subheader("Bảng 2. Missing value trước và sau clean")
+        st.subheader("Bảng 2. Giá trị thiếu trước và sau làm sạch")
         if isinstance(before_frame, pd.DataFrame):
             st.dataframe(
                 _build_missing_fill_audit_table(before_frame, df_cleaned),
@@ -214,9 +214,9 @@ def render_processing_panel(raw_frame: pd.DataFrame) -> None:
 
 
 def render_processing_steps_panel() -> None:
-    st.subheader("Processing Steps")
+    st.subheader("Các bước tiền xử lý")
     st.caption(
-        "Các bước dưới đây bám theo nội dung preprocessing mới. "
+        "Các bước dưới đây bám theo nội dung tiền xử lý mới. "
         "Mỗi mục gồm mô tả nghiệp vụ và đoạn code đại diện cho phần logic đang chạy trong pipeline."
     )
     for step in PREPROCESSING_PIPELINE_STEPS:

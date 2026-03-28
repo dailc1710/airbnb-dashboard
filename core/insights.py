@@ -26,6 +26,76 @@ def _canonicalize_series(series: pd.Series, mapping: dict[str, str]) -> pd.Serie
     return cleaned.map(lambda value: lookup.get(str(value).lower(), str(value)) if pd.notna(value) else value)
 
 
+def _display_text(value: object, fallback: str) -> str:
+    if value is None or pd.isna(value):
+        return fallback
+    text = str(value).strip()
+    if not text:
+        return fallback
+    return text
+
+
+def _title_case_location(value: object, fallback: str) -> str:
+    text = _display_text(value, fallback)
+    if text == fallback:
+        return fallback
+    return text.replace("-", " ").title()
+
+
+def _build_lowest_price_summary(frame: pd.DataFrame) -> dict[str, str] | None:
+    if "price" not in frame.columns:
+        return None
+
+    price_series = pd.to_numeric(frame["price"], errors="coerce")
+    valid_prices = price_series.dropna()
+    if valid_prices.empty:
+        return None
+
+    min_price = float(valid_prices.min())
+    matched_rows = frame.loc[price_series == min_price].copy()
+    if matched_rows.empty:
+        return None
+
+    sample_row = matched_rows.iloc[0]
+    room_type = translate_room_type(_display_text(sample_row.get("room_type"), t("common.na")))
+    neighbourhood = _title_case_location(sample_row.get("neighbourhood"), t("common.na"))
+    area = _display_text(sample_row.get("neighbourhood_group"), t("common.na"))
+    return {
+        "price": format_currency(min_price, fallback=t("common.na")),
+        "count": f"{len(matched_rows):,}",
+        "room_type": room_type,
+        "neighbourhood": neighbourhood,
+        "area": area,
+    }
+
+
+def _build_highest_price_summary(frame: pd.DataFrame) -> dict[str, str] | None:
+    if "price" not in frame.columns:
+        return None
+
+    price_series = pd.to_numeric(frame["price"], errors="coerce")
+    valid_prices = price_series.dropna()
+    if valid_prices.empty:
+        return None
+
+    max_price = float(valid_prices.max())
+    matched_rows = frame.loc[price_series == max_price].copy()
+    if matched_rows.empty:
+        return None
+
+    sample_row = matched_rows.iloc[0]
+    room_type = translate_room_type(_display_text(sample_row.get("room_type"), t("common.na")))
+    neighbourhood = _title_case_location(sample_row.get("neighbourhood"), t("common.na"))
+    area = _display_text(sample_row.get("neighbourhood_group"), t("common.na"))
+    return {
+        "price": format_currency(max_price, fallback=t("common.na")),
+        "count": f"{len(matched_rows):,}",
+        "room_type": room_type,
+        "neighbourhood": neighbourhood,
+        "area": area,
+    }
+
+
 def _prepare_chat_frame(frame: pd.DataFrame) -> pd.DataFrame:
     prepared = frame.copy()
 
@@ -66,6 +136,20 @@ def build_chat_context(frame: pd.DataFrame) -> str:
         context_lines.append(
             f"- Price median: {format_currency(prepared['price'].median(), fallback='N/A')}; mean: {format_currency(prepared['price'].mean(), fallback='N/A')}"
         )
+        lowest_summary = _build_lowest_price_summary(prepared)
+        if lowest_summary:
+            context_lines.append(
+                "- Lowest nightly price: "
+                f"{lowest_summary['price']}; listings at this price: {lowest_summary['count']}; "
+                f"sample: {lowest_summary['room_type']} in {lowest_summary['neighbourhood']}, {lowest_summary['area']}"
+            )
+        highest_summary = _build_highest_price_summary(prepared)
+        if highest_summary:
+            context_lines.append(
+                "- Highest nightly price: "
+                f"{highest_summary['price']}; listings at this price: {highest_summary['count']}; "
+                f"sample: {highest_summary['room_type']} in {highest_summary['neighbourhood']}, {highest_summary['area']}"
+            )
 
     if {"neighbourhood_group", "price"}.issubset(prepared.columns):
         area_prices = prepared.groupby("neighbourhood_group")["price"].median().sort_values(ascending=False)
@@ -195,11 +279,58 @@ def answer_chat_question(question: str, frame: pd.DataFrame) -> str:
     frame = _prepare_chat_frame(frame)
     prompt = question.lower()
     insights = insight_sentences(frame)
+    area_tokens = ("neighbourhood", "neighborhood", "area", "borough", "khu", "quận", "vùng")
 
     if frame.empty:
         return insights[0]
 
-    if any(token in prompt for token in ("neighbourhood", "neighborhood", "area", "borough", "khu", "quận", "vùng")) and {"neighbourhood_group", "price"}.issubset(frame.columns):
+    if any(
+        token in prompt
+        for token in (
+            "lowest",
+            "cheapest",
+            "minimum price",
+            "min price",
+            "lowest price",
+            "rẻ nhất",
+            "thấp nhất",
+            "giá thấp nhất",
+            "giá rẻ nhất",
+            "phòng thấp nhất",
+            "phòng rẻ nhất",
+        )
+    ):
+        lowest_summary = _build_lowest_price_summary(frame)
+        if lowest_summary:
+            return t(
+                "chat.answer.lowest_price",
+                price=lowest_summary["price"],
+                count=lowest_summary["count"],
+                room_type=lowest_summary["room_type"],
+                neighbourhood=lowest_summary["neighbourhood"],
+                area=lowest_summary["area"],
+            )
+
+    if any(token in prompt for token in ("average", "mean", "trung bình", "giá trung bình")) and "price" in frame.columns:
+        return t(
+            "chat.answer.average_price",
+            mean=format_currency(frame["price"].mean(), fallback=t("common.na")),
+            median=format_currency(frame["price"].median(), fallback=t("common.na")),
+        )
+
+    if any(token in prompt for token in ("highest", "most expensive", "max price", "highest price", "đắt nhất", "cao nhất", "giá cao", "giá cao nhất")) and not any(token in prompt for token in area_tokens):
+        highest_summary = _build_highest_price_summary(frame)
+        if highest_summary:
+            return t(
+                "chat.answer.highest_price",
+                price=highest_summary["price"],
+                count=highest_summary["count"],
+                room_type=highest_summary["room_type"],
+                neighbourhood=highest_summary["neighbourhood"],
+                area=highest_summary["area"],
+            )
+
+    if any(token in prompt for token in area_tokens) and {"neighbourhood_group", "price"}.issubset(frame.columns):
         area_prices = frame.groupby("neighbourhood_group")["price"].median().sort_values(ascending=False)
         top_two = ", ".join(
             f"{area}: {format_currency(value, fallback=t('common.na'))}"

@@ -904,6 +904,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "This scaffold uses a rule-based assistant that answers questions using the current dataset summary.",
         "vi": "Bộ khung này dùng trợ lý dựa trên luật để trả lời câu hỏi bằng phần tóm tắt của bộ dữ liệu hiện tại.",
     },
+    "chatbot.source.default": {
+        "en": "No CSV has been uploaded in this session. The chatbot is currently answering from the default dataset source: {source}.",
+        "vi": "Bạn chưa tải CSV trong session này. Chatbot hiện đang trả lời từ nguồn dữ liệu mặc định: {source}.",
+    },
     "chatbot.settings.title": {
         "en": "AI settings",
         "vi": "Cài đặt AI",
@@ -920,17 +924,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Rule-based summary",
         "vi": "Tóm tắt theo rule",
     },
-    "chatbot.provider.openai": {
-        "en": "ChatGPT (OpenAI)",
-        "vi": "ChatGPT (OpenAI)",
-    },
     "chatbot.provider.gemini": {
         "en": "Gemini",
         "vi": "Gemini",
-    },
-    "chatbot.provider.openai_key": {
-        "en": "OpenAI API key",
-        "vi": "OpenAI API key",
     },
     "chatbot.provider.gemini_key": {
         "en": "Gemini API key",
@@ -938,31 +934,59 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "chatbot.provider.network_note": {
         "en": "If the provider call fails or the key is missing, the chatbot falls back to the local rule-based answer.",
-        "vi": "Nếu gọi provider thất bại hoặc thiếu key, chatbot sẽ tự fallback về câu trả lời rule-based cục bộ.",
+        "vi": "Nếu dịch vụ AI lỗi hoặc thiếu API key, chatbot sẽ chuyển sang câu trả lời dựa trên luật ở máy cục bộ.",
     },
     "chatbot.provider.missing_key": {
         "en": "{provider} is selected but the API key is empty. Falling back to the local rule-based answer.",
-        "vi": "Bạn đã chọn {provider} nhưng chưa nhập API key. Chatbot sẽ fallback về câu trả lời rule-based cục bộ.",
+        "vi": "Bạn đã chọn {provider} nhưng chưa nhập API key. Chatbot sẽ chuyển sang câu trả lời dựa trên luật ở máy cục bộ.",
     },
     "chatbot.provider.failed": {
         "en": "{provider} could not be reached: {error}. Falling back to the local rule-based answer.",
-        "vi": "{provider} không thể được gọi: {error}. Chatbot sẽ fallback về câu trả lời rule-based cục bộ.",
+        "vi": "{provider} hiện không dùng được: {error}. Chatbot đã chuyển sang câu trả lời dựa trên luật ở máy cục bộ.",
     },
     "chatbot.status.rule_based": {
         "en": "Using local rule-based assistant.",
-        "vi": "Đang dùng trợ lý rule-based cục bộ.",
+        "vi": "Đang dùng trợ lý dựa trên luật ở máy cục bộ.",
     },
     "chatbot.status.using_provider": {
         "en": "Using {provider} API.",
         "vi": "Đang dùng API của {provider}.",
     },
+    "chatbot.status.local_structured": {
+        "en": "Answered directly from the local dataset for this question.",
+        "vi": "Câu hỏi này được trả lời trực tiếp từ bộ dữ liệu cục bộ.",
+    },
     "chatbot.status.fallback_missing_key": {
         "en": "Falling back to rule-based: missing {provider} API key.",
-        "vi": "Đang fallback về rule-based: thiếu API key của {provider}.",
+        "vi": "Đang chuyển sang chế độ dựa trên luật: thiếu API key của {provider}.",
     },
     "chatbot.status.fallback_failed": {
         "en": "Falling back to rule-based: {provider} API is unavailable.",
-        "vi": "Đang fallback về rule-based: API của {provider} hiện không khả dụng.",
+        "vi": "Đang chuyển sang chế độ dựa trên luật: API của {provider} hiện không khả dụng.",
+    },
+    "chatbot.error.quota": {
+        "en": "The API quota is exhausted or billing is not enabled.",
+        "vi": "API key đã hết quota hoặc tài khoản chưa bật billing.",
+    },
+    "chatbot.error.rate_limit": {
+        "en": "The request hit the rate limit. Please try again later.",
+        "vi": "Yêu cầu đã chạm giới hạn tần suất. Hãy thử lại sau.",
+    },
+    "chatbot.error.auth": {
+        "en": "The API key is invalid or does not have permission for this request.",
+        "vi": "API key không hợp lệ hoặc không có quyền cho yêu cầu này.",
+    },
+    "chatbot.error.timeout": {
+        "en": "The AI service took too long to respond.",
+        "vi": "Dịch vụ AI phản hồi quá lâu.",
+    },
+    "chatbot.error.network": {
+        "en": "The app could not connect to the AI service.",
+        "vi": "Ứng dụng không kết nối được tới dịch vụ AI.",
+    },
+    "chatbot.error.generic": {
+        "en": "{provider} is temporarily unavailable.",
+        "vi": "{provider} hiện tạm thời không khả dụng.",
     },
     "chatbot.quick.price": {
         "en": "What does the price distribution look like?",
@@ -1063,6 +1087,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "chat.answer.price": {
         "en": "The median price is {median} and the average is {mean}. The 75th percentile is {percentile}.",
         "vi": "Giá trung vị là {median} và giá trung bình là {mean}. Phân vị thứ 75 là {percentile}.",
+    },
+    "chat.answer.average_price": {
+        "en": "The average nightly price is {mean}. The median price is {median}.",
+        "vi": "Giá trung bình mỗi đêm là {mean}. Giá trung vị là {median}.",
+    },
+    "chat.answer.lowest_price": {
+        "en": "The lowest nightly price in the current cleaned dataset is {price}. There are {count} listings at this price floor; one example is {room_type} in {neighbourhood}, {area}.",
+        "vi": "Mức giá theo đêm thấp nhất trong bộ dữ liệu đã làm sạch hiện tại là {price}. Có {count} listing cùng mức giá sàn này; một ví dụ là {room_type} tại {neighbourhood}, {area}.",
+    },
+    "chat.answer.highest_price": {
+        "en": "The highest nightly price in the current cleaned dataset is {price}. There are {count} listings at this price ceiling; one example is {room_type} in {neighbourhood}, {area}.",
+        "vi": "Mức giá theo đêm cao nhất trong bộ dữ liệu đã làm sạch hiện tại là {price}. Có {count} listing cùng mức giá trần này; một ví dụ là {room_type} tại {neighbourhood}, {area}.",
     },
     "chat.answer.room_mix": {
         "en": "Room type mix: {summary}.",

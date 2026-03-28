@@ -6,11 +6,10 @@ from urllib import error, parse, request
 import pandas as pd
 import streamlit as st
 
-from core.i18n import t
+from core.i18n import display_source_label, t
 from core.insights import answer_chat_question, build_chat_context, insight_sentences
 
-PROVIDER_OPTIONS = ["rule-based", "openai", "gemini"]
-OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+PROVIDER_OPTIONS = ["rule-based", "gemini"]
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 
 
@@ -23,13 +22,25 @@ def _set_chatbot_status(message: str, tone: str = "info") -> None:
     st.session_state["chatbot_status_tone"] = tone
 
 
-def _sync_chatbot_status() -> None:
+def _normalize_chatbot_provider() -> str:
     provider = st.session_state.get("chatbot_provider", "rule-based")
+    if provider not in PROVIDER_OPTIONS:
+        st.session_state["chatbot_provider"] = "rule-based"
+        st.session_state["chatbot_status_message"] = ""
+        st.session_state["chatbot_status_tone"] = "info"
+        if "openai_api_key" in st.session_state:
+            st.session_state["openai_api_key"] = ""
+        return "rule-based"
+    return provider
+
+
+def _sync_chatbot_status() -> None:
+    provider = _normalize_chatbot_provider()
     if provider == "rule-based":
         _set_chatbot_status(t("chatbot.status.rule_based"), "info")
         return
 
-    key_name = "openai_api_key" if provider == "openai" else "gemini_api_key"
+    key_name = "gemini_api_key"
     api_key = st.session_state.get(key_name, "").strip()
     if api_key:
         _set_chatbot_status(t("chatbot.status.using_provider", provider=_provider_label(provider)), "success")
@@ -67,7 +78,8 @@ def _build_system_prompt(frame: pd.DataFrame) -> str:
     return (
         "You are an Airbnb analytics assistant inside a Streamlit dashboard. "
         f"Answer in {response_language}. Keep the answer concise, factual, and grounded only in the provided dataset summary. "
-        "If the user asks beyond this context, clearly say that the current chatbot only has summary-level context from the dashboard.\n\n"
+        "Use the provided dataset context, which may include aggregate metrics and concrete examples from the current cleaned dataset. "
+        "If the user asks beyond this context, clearly say that the current chatbot only has the dashboard context available.\n\n"
         f"Rows in current dataset: {len(frame):,}\n"
         f"Visible columns: {visible_columns}\n"
         "Dataset summary:\n"
@@ -108,34 +120,76 @@ def _post_json(url: str, headers: dict[str, str], payload: dict[str, object]) ->
     return parsed_response
 
 
-def _call_openai(question: str, frame: pd.DataFrame) -> str:
-    api_key = st.session_state.get("openai_api_key", "").strip()
-    model = OPENAI_DEFAULT_MODEL
-    payload = {
-        "model": model,
-        "temperature": 0.2,
-        "messages": [
-            {"role": "system", "content": _build_system_prompt(frame)},
-            {"role": "user", "content": question},
-        ],
-    }
-    response = _post_json(
-        "https://api.openai.com/v1/chat/completions",
-        {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        payload,
-    )
-    choices = response.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise RuntimeError("OpenAI returned no choices.")
+def _describe_provider_error(provider: str, exc: Exception) -> str:
+    raw_error = str(exc).strip()
+    normalized = raw_error.lower()
 
-    message = choices[0].get("message", {})
-    content = message.get("content", "")
-    if not isinstance(content, str) or not content.strip():
-        raise RuntimeError("OpenAI returned an empty message.")
-    return content.strip()
+    if any(token in normalized for token in ("insufficient_quota", "exceeded your current quota", "quota", "billing")):
+        return t("chatbot.error.quota")
+    if any(token in normalized for token in ("rate limit", "too many requests", "429")):
+        return t("chatbot.error.rate_limit")
+    if any(
+        token in normalized
+        for token in (
+            "invalid api key",
+            "incorrect api key",
+            "api key not valid",
+            "unauthorized",
+            "permission denied",
+            "401",
+            "403",
+        )
+    ):
+        return t("chatbot.error.auth")
+    if any(token in normalized for token in ("timed out", "timeout")):
+        return t("chatbot.error.timeout")
+    if any(
+        token in normalized
+        for token in (
+            "temporary failure",
+            "name or service not known",
+            "connection refused",
+            "network is unreachable",
+            "no route to host",
+            "connection reset",
+            "remote end closed",
+            "service unavailable",
+            "bad gateway",
+            "502",
+            "503",
+        )
+    ):
+        return t("chatbot.error.network")
+    return t("chatbot.error.generic", provider=_provider_label(provider))
+
+
+def _should_use_local_dataset_answer(question: str) -> bool:
+    prompt = question.lower()
+    return any(
+        token in prompt
+        for token in (
+            "lowest",
+            "cheapest",
+            "minimum price",
+            "min price",
+            "highest",
+            "most expensive",
+            "max price",
+            "average",
+            "mean",
+            "median",
+            "rẻ nhất",
+            "thấp nhất",
+            "giá thấp nhất",
+            "giá rẻ nhất",
+            "đắt nhất",
+            "cao nhất",
+            "giá cao",
+            "giá cao nhất",
+            "trung bình",
+            "giá trung bình",
+        )
+    )
 
 
 def _call_gemini(question: str, frame: pd.DataFrame) -> str:
@@ -183,14 +237,17 @@ def _call_gemini(question: str, frame: pd.DataFrame) -> str:
 
 
 def _generate_assistant_reply(question: str, frame: pd.DataFrame) -> str:
-    provider = st.session_state.get("chatbot_provider", "rule-based")
+    provider = _normalize_chatbot_provider()
     fallback_reply = answer_chat_question(question, frame)
 
     if provider == "rule-based":
         _set_chatbot_status(t("chatbot.status.rule_based"), "info")
         return fallback_reply
+    if _should_use_local_dataset_answer(question):
+        _set_chatbot_status(t("chatbot.status.local_structured"), "info")
+        return fallback_reply
 
-    key_name = "openai_api_key" if provider == "openai" else "gemini_api_key"
+    key_name = "gemini_api_key"
     api_key = st.session_state.get(key_name, "").strip()
     if not api_key:
         _set_chatbot_status(
@@ -201,24 +258,23 @@ def _generate_assistant_reply(question: str, frame: pd.DataFrame) -> str:
         return fallback_reply
 
     try:
-        if provider == "openai":
-            reply = _call_openai(question, frame)
-        else:
-            reply = _call_gemini(question, frame)
+        reply = _call_gemini(question, frame)
         _set_chatbot_status(t("chatbot.status.using_provider", provider=_provider_label(provider)), "success")
         return reply
     except Exception as exc:
+        error_message = _describe_provider_error(provider, exc)
         _set_chatbot_status(
             t("chatbot.status.fallback_failed", provider=_provider_label(provider)),
             "warning",
         )
-        st.warning(t("chatbot.provider.failed", provider=_provider_label(provider), error=str(exc)))
+        st.warning(t("chatbot.provider.failed", provider=_provider_label(provider), error=error_message))
         return fallback_reply
 
 
 def _render_provider_settings() -> None:
     with st.expander(t("chatbot.settings.title"), expanded=False):
         st.caption(t("chatbot.settings.caption"))
+        _normalize_chatbot_provider()
 
         st.selectbox(
             t("chatbot.provider.label"),
@@ -228,14 +284,7 @@ def _render_provider_settings() -> None:
         )
 
         provider = st.session_state.get("chatbot_provider", "rule-based")
-        if provider == "openai":
-            st.text_input(
-                t("chatbot.provider.openai_key"),
-                type="password",
-                key="openai_api_key",
-                placeholder="sk-...",
-            )
-        elif provider == "gemini":
+        if provider == "gemini":
             st.text_input(
                 t("chatbot.provider.gemini_key"),
                 type="password",
@@ -250,9 +299,12 @@ def _render_chat_text(content: str) -> None:
     st.markdown(content.replace("$", r"\$"))
 
 
-def render_page(frame: pd.DataFrame) -> None:
+def render_page(frame: pd.DataFrame, source_label: str) -> None:
+    _normalize_chatbot_provider()
     st.title(t("chatbot.title"))
     st.caption(t("chatbot.caption"))
+    if not st.session_state.get("raw_df_name"):
+        st.info(t("chatbot.source.default", source=display_source_label(source_label)))
     _render_provider_settings()
     _sync_chatbot_status()
 
