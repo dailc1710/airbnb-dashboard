@@ -5,25 +5,29 @@ from html import escape
 import pandas as pd
 import streamlit as st
 
-from core.config import NAVIGATION_PAGES
 from core.i18n import (
     display_source_label,
     nav_label,
     render_language_selector,
     t,
 )
-from users import logout_user
+from users import get_current_role, get_navigation_pages_for_role, logout_user
 
 
-def render_sidebar(source_label: str, frame: pd.DataFrame) -> str:
-    username = st.session_state.get("username") or "guest"
+def render_sidebar(source_label: str, frame: pd.DataFrame, *, has_uploaded_data: bool) -> str:
+    username = st.session_state.get("username") or t("common.na")
+    role = get_current_role()
+    role_label = t(f"role.{role}")
+    allowed_pages = get_navigation_pages_for_role(role)
+    if "data_raw" not in allowed_pages:
+        allowed_pages = [allowed_pages[0], "data_raw", *allowed_pages[1:]]
     prepared_rows = len(frame)
     room_types = frame["room_type"].nunique() if "room_type" in frame.columns else 0
     neighborhoods = frame["neighbourhood_group"].nunique() if "neighbourhood_group" in frame.columns else 0
-    source_text = display_source_label(source_label or "unknown source")
+    source_text = display_source_label(source_label or t("common.na"))
 
-    if st.session_state.get("current_page") not in NAVIGATION_PAGES:
-        st.session_state["current_page"] = NAVIGATION_PAGES[0]
+    if st.session_state.get("current_page") not in allowed_pages:
+        st.session_state["current_page"] = allowed_pages[0]
 
     with st.sidebar:
         st.markdown('<div class="sidebar-brandmark">Airbnb</div>', unsafe_allow_html=True)
@@ -41,7 +45,7 @@ def render_sidebar(source_label: str, frame: pd.DataFrame) -> str:
                 </div>
                 <div class="sidebar-profile__meta">
                     <strong>{escape(username)}</strong>
-                    <span>{escape(t("sidebar.live_badge"))}</span>
+                    <span>{escape(role_label)} · {escape(t("sidebar.live_badge"))}</span>
                 </div>
             </div>
             """,
@@ -70,11 +74,11 @@ def render_sidebar(source_label: str, frame: pd.DataFrame) -> str:
             f'<div class="sidebar-section-title">{escape(t("sidebar.navigate"))}</div>',
             unsafe_allow_html=True,
         )
-        current = st.session_state.get("current_page", NAVIGATION_PAGES[0])
+        current = st.session_state.get("current_page", allowed_pages[0])
         st.session_state["current_page"] = current
         page = st.radio(
             t("sidebar.navigate"),
-            options=NAVIGATION_PAGES,
+            options=allowed_pages,
             format_func=nav_label,
             label_visibility="collapsed",
             width="stretch",

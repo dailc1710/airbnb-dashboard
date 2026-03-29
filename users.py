@@ -7,15 +7,18 @@ from pathlib import Path
 
 import streamlit as st
 
+from core.config import ADMIN_ROLE, ROLE_NAVIGATION_PAGES, USER_ROLE
 from core.i18n import DEFAULT_LANGUAGE, t
 
 USERS_FILE = Path("data/users.json")
+VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
 
 
 def initialize_session_state() -> None:
     defaults = {
         "authenticated": False,
         "username": None,
+        "role": None,
         "chat_history": [],
         "chatbot_provider": "rule-based",
         "gemini_api_key": "",
@@ -48,9 +51,32 @@ def _ensure_users_file() -> None:
 def _load_users() -> dict[str, dict[str, str]]:
     _ensure_users_file()
     try:
-        return json.loads(USERS_FILE.read_text(encoding="utf-8")) or {}
+        raw_users = json.loads(USERS_FILE.read_text(encoding="utf-8")) or {}
     except json.JSONDecodeError:
         return {}
+
+    users: dict[str, dict[str, str]] = {}
+    schema_changed = False
+
+    for raw_username, raw_record in raw_users.items():
+        normalized_username = _normalize_username(str(raw_username))
+        if not normalized_username or not isinstance(raw_record, dict):
+            schema_changed = True
+            continue
+
+        normalized_record = _normalize_user_record(normalized_username, raw_record)
+        if not normalized_record["password_hash"]:
+            schema_changed = True
+            continue
+
+        users[normalized_username] = normalized_record
+        if normalized_username != raw_username or normalized_record != raw_record:
+            schema_changed = True
+
+    if schema_changed:
+        _save_users(users)
+
+    return users
 
 
 def _save_users(users: dict[str, dict[str, str]]) -> None:
@@ -59,6 +85,35 @@ def _save_users(users: dict[str, dict[str, str]]) -> None:
 
 def _normalize_username(username: str) -> str:
     return username.strip().lower()
+
+
+def _legacy_default_role(normalized_username: str) -> str:
+    return ADMIN_ROLE if normalized_username == ADMIN_ROLE else USER_ROLE
+
+
+def _normalize_role(role: str | None, *, fallback: str = USER_ROLE) -> str:
+    normalized_role = str(role or "").strip().lower()
+    if normalized_role in VALID_ROLES:
+        return normalized_role
+
+    normalized_fallback = str(fallback).strip().lower()
+    if normalized_fallback in VALID_ROLES:
+        return normalized_fallback
+    return USER_ROLE
+
+
+def _normalize_user_record(normalized_username: str, user_record: dict[str, str]) -> dict[str, str]:
+    stored_username = str(user_record.get("username") or normalized_username).strip() or normalized_username
+    password_hash = str(user_record.get("password_hash") or "").strip()
+    role = _normalize_role(
+        user_record.get("role"),
+        fallback=_legacy_default_role(normalized_username),
+    )
+    return {
+        "username": stored_username,
+        "password_hash": password_hash,
+        "role": role,
+    }
 
 
 def _hash_password(password: str, salt: str | None = None) -> str:
@@ -98,6 +153,7 @@ def register_user(username: str, password: str, confirm_password: str) -> tuple[
     users[normalized_username] = {
         "username": username.strip(),
         "password_hash": _hash_password(password),
+        "role": USER_ROLE,
     }
     _save_users(users)
     return True, t("auth.notice.account_created")
@@ -113,6 +169,10 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
 
     st.session_state["authenticated"] = True
     st.session_state["username"] = user_record["username"]
+    st.session_state["role"] = _normalize_role(
+        user_record.get("role"),
+        fallback=_legacy_default_role(normalized_username),
+    )
     st.session_state["chat_history"] = []
     st.session_state["chatbot_provider"] = "rule-based"
     st.session_state["gemini_api_key"] = ""
@@ -135,6 +195,7 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
 def logout_user() -> None:
     st.session_state["authenticated"] = False
     st.session_state["username"] = None
+    st.session_state["role"] = None
     st.session_state["chat_history"] = []
     st.session_state["chatbot_provider"] = "rule-based"
     st.session_state["gemini_api_key"] = ""
@@ -150,3 +211,17 @@ def logout_user() -> None:
     st.session_state["processed_ml_df"] = None
     st.session_state["preprocessing_before_df"] = None
     st.session_state["processing_report"] = None
+    st.session_state["current_page"] = "overview"
+
+
+def get_current_role() -> str:
+    return _normalize_role(st.session_state.get("role"))
+
+
+def get_navigation_pages_for_role(role: str | None = None) -> list[str]:
+    resolved_role = _normalize_role(role if role is not None else st.session_state.get("role"))
+    return list(ROLE_NAVIGATION_PAGES.get(resolved_role, ROLE_NAVIGATION_PAGES[USER_ROLE]))
+
+
+def user_can_access_page(page: str, role: str | None = None) -> bool:
+    return page in get_navigation_pages_for_role(role)

@@ -10,47 +10,101 @@ from core.data import (
     build_missing_table,
     normalize_columns,
 )
-from core.i18n import localize_dataframe_for_display, t, translate_room_type
+from core.i18n import get_language, localize_dataframe_for_display, t, translate_room_type
 from pages.preprocessing import run_processing_pipeline, store_processed_outputs
 
-COLUMN_MEANINGS_VI = {
-    "id": "Mã định danh duy nhất của mỗi listing.",
-    "name": "Tên hiển thị của listing trên Airbnb.",
-    "host_id": "Mã định danh của chủ nhà (host).",
-    "host_name": "Tên của chủ nhà.",
-    "neighbourhood_group": "Khu vực lớn hoặc quận nơi listing tọa lạc, ví dụ Manhattan hoặc Brooklyn.",
-    "neighbourhood": "Khu phố hoặc địa bàn cụ thể của listing bên trong neighbourhood_group.",
-    "lat": "Vĩ độ của vị trí listing.",
-    "long": "Kinh độ của vị trí listing.",
-    "country": "Quốc gia của listing.",
-    "country_code": "Mã quốc gia viết tắt của listing.",
-    "room_type": "Loại chỗ ở được cho thuê, ví dụ Entire home/apt hoặc Private room.",
-    "price": "Giá niêm yết của listing, thường là theo đêm.",
-    "service_fee": "Phí dịch vụ đi kèm với booking.",
-    "minimum_nights": "Số đêm tối thiểu khách phải đặt.",
-    "number_of_reviews": "Tổng số lượt đánh giá mà listing đã nhận.",
-    "reviews_per_month": "Số lượt đánh giá trung bình mỗi tháng.",
-    "last_review": "Ngày gần nhất listing nhận được đánh giá.",
-    "review_rate_number": "Điểm đánh giá tổng quan của listing, thường theo thang điểm 1-5.",
-    "calculated_host_listings_count": "Số listing mà cùng một host đang sở hữu hoặc quản lý trong dữ liệu.",
-    "availability_365": "Số ngày listing còn trống hoặc có thể đặt trong 365 ngày gần nhất.",
-    "instant_bookable": "Cho biết listing có thể đặt ngay mà không cần host phê duyệt hay không.",
-    "cancellation_policy": "Chính sách hủy đặt phòng áp dụng cho listing.",
-    "construction_year": "Năm xây dựng hoặc năm hoàn thành của bất động sản.",
-    "house_rules": "Nội quy mà khách phải tuân theo khi ở tại listing.",
-    "license": "Mã giấy phép hoặc thông tin cấp phép vận hành listing.",
-    "host_identity_verified": "Trạng thái xác minh danh tính của host trên nền tảng.",
-    "listing_year": "Năm tham chiếu của listing dùng trong các phân tích theo thời gian.",
-    "property_age": "Tuổi của bất động sản, thường được tính từ năm xây dựng.",
-    "estimated_revenue": "Doanh thu ước tính của listing dựa trên giá và mức độ khai thác.",
-    "occupancy_rate": "Tỷ lệ lấp đầy hoặc mức độ được đặt của listing.",
-    "booking_flexibility_score": "Điểm tổng hợp phản ánh độ linh hoạt khi booking.",
-    "customer_segment": "Nhóm khách hàng hoặc kiểu lưu trú mà listing phù hợp.",
-    "days_since_last_review": "Số ngày tính từ lần đánh giá gần nhất đến mốc phân tích.",
-    "price_to_neighborhood_ratio": "Tỷ lệ giữa giá listing và mức giá trung bình của khu vực.",
-    "popularity_index": "Chỉ số tổng hợp phản ánh mức độ phổ biến của listing.",
-    "booking_friction": "Chỉ số tổng hợp phản ánh mức độ khó hoặc rào cản khi đặt listing.",
+COLUMN_MEANINGS = {
+    "id": {"en": "Unique identifier for each listing.", "vi": "Mã định danh duy nhất của mỗi listing."},
+    "name": {"en": "Listing title shown on Airbnb.", "vi": "Tên hiển thị của listing trên Airbnb."},
+    "host_id": {"en": "Identifier of the host account.", "vi": "Mã định danh của chủ nhà (host)."},
+    "host_name": {"en": "Name of the host.", "vi": "Tên của chủ nhà."},
+    "neighbourhood_group": {
+        "en": "Large area or borough where the listing is located, such as Manhattan or Brooklyn.",
+        "vi": "Khu vực lớn hoặc quận nơi listing tọa lạc, ví dụ Manhattan hoặc Brooklyn.",
+    },
+    "neighbourhood": {
+        "en": "Specific neighborhood inside the neighbourhood_group.",
+        "vi": "Khu phố hoặc địa bàn cụ thể của listing bên trong neighbourhood_group.",
+    },
+    "lat": {"en": "Latitude of the listing location.", "vi": "Vĩ độ của vị trí listing."},
+    "long": {"en": "Longitude of the listing location.", "vi": "Kinh độ của vị trí listing."},
+    "country": {"en": "Country of the listing.", "vi": "Quốc gia của listing."},
+    "country_code": {"en": "Short country code of the listing.", "vi": "Mã quốc gia viết tắt của listing."},
+    "room_type": {
+        "en": "Accommodation type being rented, for example Entire home/apt or Private room.",
+        "vi": "Loại chỗ ở được cho thuê, ví dụ Entire home/apt hoặc Private room.",
+    },
+    "price": {"en": "Listed price of the listing, typically per night.", "vi": "Giá niêm yết của listing, thường là theo đêm."},
+    "service_fee": {"en": "Service fee attached to the booking.", "vi": "Phí dịch vụ đi kèm với booking."},
+    "minimum_nights": {"en": "Minimum number of nights guests must book.", "vi": "Số đêm tối thiểu khách phải đặt."},
+    "number_of_reviews": {"en": "Total number of reviews received by the listing.", "vi": "Tổng số lượt đánh giá mà listing đã nhận."},
+    "reviews_per_month": {"en": "Average number of reviews per month.", "vi": "Số lượt đánh giá trung bình mỗi tháng."},
+    "last_review": {"en": "Most recent review date for the listing.", "vi": "Ngày gần nhất listing nhận được đánh giá."},
+    "review_rate_number": {"en": "Overall review score, usually on a 1-5 scale.", "vi": "Điểm đánh giá tổng quan của listing, thường theo thang điểm 1-5."},
+    "calculated_host_listings_count": {
+        "en": "Number of listings owned or managed by the same host in the dataset.",
+        "vi": "Số listing mà cùng một host đang sở hữu hoặc quản lý trong dữ liệu.",
+    },
+    "availability_365": {
+        "en": "Number of days the listing is available within the latest 365 days.",
+        "vi": "Số ngày listing còn trống hoặc có thể đặt trong 365 ngày gần nhất.",
+    },
+    "instant_bookable": {
+        "en": "Whether the listing can be booked instantly without host approval.",
+        "vi": "Cho biết listing có thể đặt ngay mà không cần host phê duyệt hay không.",
+    },
+    "cancellation_policy": {"en": "Cancellation policy applied to the listing.", "vi": "Chính sách hủy đặt phòng áp dụng cho listing."},
+    "construction_year": {"en": "Year when the property was built or completed.", "vi": "Năm xây dựng hoặc năm hoàn thành của bất động sản."},
+    "house_rules": {"en": "House rules guests must follow during the stay.", "vi": "Nội quy mà khách phải tuân theo khi ở tại listing."},
+    "license": {"en": "License code or operating permit information for the listing.", "vi": "Mã giấy phép hoặc thông tin cấp phép vận hành listing."},
+    "host_identity_verified": {"en": "Verification status of the host identity on the platform.", "vi": "Trạng thái xác minh danh tính của host trên nền tảng."},
+    "listing_year": {"en": "Reference year used for time-based analysis.", "vi": "Năm tham chiếu của listing dùng trong các phân tích theo thời gian."},
+    "property_age": {"en": "Age of the property, typically derived from construction year.", "vi": "Tuổi của bất động sản, thường được tính từ năm xây dựng."},
+    "estimated_revenue": {"en": "Estimated listing revenue based on price and utilization.", "vi": "Doanh thu ước tính của listing dựa trên giá và mức độ khai thác."},
+    "occupancy_rate": {"en": "Occupancy rate or booking intensity of the listing.", "vi": "Tỷ lệ lấp đầy hoặc mức độ được đặt của listing."},
+    "booking_flexibility_score": {"en": "Composite score reflecting booking flexibility.", "vi": "Điểm tổng hợp phản ánh độ linh hoạt khi booking."},
+    "customer_segment": {"en": "Customer segment or stay pattern that fits the listing.", "vi": "Nhóm khách hàng hoặc kiểu lưu trú mà listing phù hợp."},
+    "days_since_last_review": {"en": "Number of days from the latest review to the analysis date.", "vi": "Số ngày tính từ lần đánh giá gần nhất đến mốc phân tích."},
+    "price_to_neighborhood_ratio": {"en": "Ratio between listing price and the neighborhood average price.", "vi": "Tỷ lệ giữa giá listing và mức giá trung bình của khu vực."},
+    "popularity_index": {"en": "Composite index reflecting listing popularity.", "vi": "Chỉ số tổng hợp phản ánh mức độ phổ biến của listing."},
+    "booking_friction": {"en": "Composite index reflecting booking difficulty or barriers.", "vi": "Chỉ số tổng hợp phản ánh mức độ khó hoặc rào cản khi đặt listing."},
 }
+
+RAW_TEXT = {
+    "unknown_column": {
+        "en": "Original field from the uploaded file. The dashboard does not have a dedicated description for this column yet.",
+        "vi": "Trường dữ liệu gốc từ file tải lên. Dashboard hiện chưa có mô tả riêng cho cột này.",
+    },
+    "uploaded_csv_fallback": {"en": "Uploaded CSV", "vi": "CSV đã tải lên"},
+    "total_missing_values": {"en": "Total missing values", "vi": "Tổng giá trị thiếu"},
+    "missing_count_by_column": {"en": "Missing values by column", "vi": "Số lượng giá trị thiếu theo từng cột"},
+    "missing_pct_axis": {"en": "Missing rate (%)", "vi": "Tỷ lệ thiếu (%)"},
+    "missing_pct_by_column": {"en": "Missing rate by column", "vi": "Phần trăm giá trị thiếu theo từng cột"},
+    "column_name": {"en": "Column name", "vi": "Tên cột"},
+    "missing_matrix": {"en": "Missing-value matrix", "vi": "Ma trận giá trị thiếu"},
+    "data_row_count": {"en": "Data rows", "vi": "Số dòng dữ liệu"},
+    "missing_data": {"en": "Missing data", "vi": "Thiếu dữ liệu"},
+    "missing_matrix_hover": {"en": "Column: %{x}<br>Row: %{y}<br>Missing data: %{z}", "vi": "Cột: %{x}<br>Dòng: %{y}<br>Thiếu dữ liệu: %{z}"},
+    "outlier_boxplot": {"en": "Outlier detection boxplot", "vi": "Boxplot nhận diện ngoại lệ"},
+    "value": {"en": "Value", "vi": "Giá trị"},
+    "no_numeric_outlier": {"en": "No numeric columns were found for outlier detection.", "vi": "Không tìm thấy cột số để nhận diện ngoại lệ."},
+    "upload_first_notice": {
+        "en": "Upload a CSV to run the preprocessing pipeline automatically. Detailed results are available in the Preprocessing tab on the sidebar.",
+        "vi": "Hãy tải CSV để chạy pipeline tiền xử lý tự động. Phần chi tiết nằm ở tab Tiền xử lý trên sidebar.",
+    },
+    "no_csv_uploaded": {
+        "en": "No CSV has been uploaded in this session yet. Upload a file above to start the dashboard workflow.",
+        "vi": "Bạn chưa tải CSV nào trong session này. Hãy tải tệp ở phía trên để bắt đầu luồng dashboard.",
+    },
+}
+
+
+def _raw_text(key: str, **kwargs: object) -> str:
+    lang = get_language()
+    template = RAW_TEXT.get(key, {}).get(lang) or RAW_TEXT.get(key, {}).get("en") or key
+    if kwargs:
+        return template.format(**kwargs)
+    return template
 
 
 def _clear_preprocessing_session_state() -> None:
@@ -72,15 +126,13 @@ def _normalize_single_column_name(column_name: str) -> str:
 
 def _get_column_meaning(column_name: str) -> str:
     normalized_name = _normalize_single_column_name(str(column_name))
-    return COLUMN_MEANINGS_VI.get(
-        normalized_name,
-        "Trường dữ liệu gốc từ file tải lên. Dashboard hiện chưa có mô tả riêng cho cột này.",
-    )
+    meaning = COLUMN_MEANINGS.get(normalized_name, {})
+    return meaning.get(get_language()) or meaning.get("en") or _raw_text("unknown_column")
 
 
 def _build_missing_table_with_meaning(frame: pd.DataFrame) -> pd.DataFrame:
     health_table = build_missing_table(frame).copy()
-    health_table.insert(1, "Ý nghĩa", health_table["column"].astype(str).map(_get_column_meaning))
+    health_table.insert(1, t("meaning"), health_table["column"].astype(str).map(_get_column_meaning))
     return health_table
 
 
@@ -160,11 +212,15 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
             audit_frame = raw_frame
             st.error(t("raw.upload.error", error=str(exc)))
     elif isinstance(session_raw_frame, pd.DataFrame):
-        st.caption(t("raw.source.uploaded", file_name=session_raw_name or "CSV đã tải lên"))
+        st.caption(t("raw.source.uploaded", file_name=session_raw_name or _raw_text("uploaded_csv_fallback")))
     else:
         st.session_state["raw_df"] = raw_frame.copy()
         st.session_state["raw_df_name"] = None
-        st.caption(t("raw.source.default"))
+        st.caption(_raw_text("no_csv_uploaded"))
+
+    if audit_frame.empty:
+        st.info(_raw_text("no_csv_uploaded"))
+        return
 
     tab_overview, tab_sort_data = st.tabs(
         [
@@ -177,7 +233,7 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
         overview_metrics = st.columns(3)
         overview_metrics[0].metric(t("raw.metric.rows"), f"{len(audit_frame):,}")
         overview_metrics[1].metric(t("raw.metric.columns"), f"{audit_frame.shape[1]:,}")
-        overview_metrics[2].metric("Tổng giá trị thiếu", f"{int(audit_frame.isna().sum().sum()):,}")
+        overview_metrics[2].metric(_raw_text("total_missing_values"), f"{int(audit_frame.isna().sum().sum()):,}")
 
         st.subheader(t("raw.preview.title"))
         st.dataframe(localize_dataframe_for_display(audit_frame.head(50)), use_container_width=True, height=360)
@@ -197,11 +253,11 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
             y="column",
             orientation="h",
             color="missing_pct",
-            title="Số lượng giá trị thiếu theo từng cột",
+            title=_raw_text("missing_count_by_column"),
             color_continuous_scale=["#f3dcc0", "#c95c36", "#7e3120"],
         )
         null_chart.update_layout(
-            coloraxis_colorbar_title_text="Tỷ lệ thiếu (%)",
+            coloraxis_colorbar_title_text=_raw_text("missing_pct_axis"),
             margin=dict(l=10, r=10, t=50, b=10),
             yaxis=dict(categoryorder="total ascending"),
         )
@@ -220,24 +276,24 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
             missing_data,
             x="column",
             y="missing_percent",
-            title="Phần trăm giá trị thiếu theo từng cột",
-            labels={"column": "Tên cột", "missing_percent": "Phần trăm (%)"},
+            title=_raw_text("missing_pct_by_column"),
+            labels={"column": _raw_text("column_name"), "missing_percent": _raw_text("missing_pct_axis")},
             text=missing_data["missing_percent"].apply(lambda x: f"{x:.2f}%"),
             color_discrete_sequence=["#440154"]
         )
         st.plotly_chart(fig1, use_container_width=True)
 
-        st.subheader("Ma trận giá trị thiếu")
+        st.subheader(_raw_text("missing_matrix"))
         sample_frame = audit_frame.sample(n=min(len(audit_frame), 1000), random_state=42).sort_index()
         null_matrix = sample_frame.isnull().astype(int)
         fig2 = px.imshow(
             null_matrix,
-            labels=dict(x="Tên cột", y="Số dòng dữ liệu", color="Thiếu dữ liệu"),
+            labels=dict(x=_raw_text("column_name"), y=_raw_text("data_row_count"), color=_raw_text("missing_data")),
             color_continuous_scale=["#440154", "#fde725"]
         )
-        fig2.update_traces(hovertemplate='Cột: %{x}<br>Dòng: %{y}<br>Thiếu dữ liệu: %{z}')
+        fig2.update_traces(hovertemplate=_raw_text("missing_matrix_hover"))
         fig2.update_layout(
-            title_text="Ma trận giá trị thiếu",
+            title_text=_raw_text("missing_matrix"),
         )
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -253,20 +309,20 @@ def render_page(raw_frame: pd.DataFrame, cleaned_frame: pd.DataFrame) -> None:
                 melted_frame,
                 x="value",
                 y="variable",
-                title="Boxplot nhận diện ngoại lệ",
-                labels={"variable": "Cột", "value": "Giá trị"},
+                title=_raw_text("outlier_boxplot"),
+                labels={"variable": t("column"), "value": _raw_text("value")},
                 orientation="h",
                 color="variable",
             )
             st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.info("Không tìm thấy cột số để nhận diện ngoại lệ.")
+            st.info(_raw_text("no_numeric_outlier"))
     
     with tab_sort_data:
         st.subheader(t("raw.cleaned.title"))
         processed_frame = st.session_state.get("processed_df")
         if not isinstance(processed_frame, pd.DataFrame):
-            st.info("Hãy tải CSV để chạy pipeline tiền xử lý tự động. Phần chi tiết nằm ở tab Tiền xử lý trên sidebar.")
+            st.info(_raw_text("upload_first_notice"))
             return
 
         filtered = filter_dataframe(processed_frame)

@@ -6,6 +6,8 @@ from textwrap import dedent
 APP_TITLE = "Airbnb Analytics Dashboard"
 DATASET_PATH = Path("data/Airbnb_Open_Data.csv")
 SAMPLE_SOURCE_LABEL = "Bundled sample data"
+ADMIN_ROLE = "admin"
+USER_ROLE = "user"
 NAVIGATION_PAGES = [
     "overview",
     "data_raw",
@@ -14,6 +16,15 @@ NAVIGATION_PAGES = [
     "conclusion",
     "chatbot",
 ]
+ROLE_NAVIGATION_PAGES = {
+    ADMIN_ROLE: NAVIGATION_PAGES,
+    USER_ROLE: [
+        "overview",
+        "eda",
+        "conclusion",
+        "chatbot",
+    ],
+}
 CHART_COLORS = ["#1f3c5b", "#c95c36", "#d8a65d", "#6d8f71"]
 
 PREPROCESSING_PIPELINE_STEPS = [

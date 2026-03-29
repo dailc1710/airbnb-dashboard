@@ -10,6 +10,7 @@ from core.config import CHART_COLORS, SAMPLE_SOURCE_LABEL
 from core.formatting import format_currency
 from core.i18n import (
     display_source_label,
+    get_language,
     nav_label,
     t,
     translate_room_type,
@@ -269,9 +270,15 @@ def _build_feature_card(*, eyebrow: str, title: str, body: str) -> str:
     )
 
 
+def _localized_output_eyebrows() -> tuple[str, str, str]:
+    if get_language() == "vi":
+        return ("CSV", "Chuẩn hóa", "Học máy")
+    return ("CSV", "Scale", "ML")
+
+
 def render_page(frame: pd.DataFrame, source_label: str) -> None:
     _inject_overview_styles()
-    source_text = display_source_label(source_label)
+    source_text = display_source_label(source_label) or t("common.na")
     price_series = frame["price"] if "price" in frame.columns else pd.Series(dtype=float)
     borough_count = int(frame["neighbourhood_group"].nunique()) if "neighbourhood_group" in frame.columns else 0
     room_type_count = int(frame["room_type"].nunique()) if "room_type" in frame.columns else 0
@@ -316,6 +323,9 @@ def render_page(frame: pd.DataFrame, source_label: str) -> None:
 
     if source_label == SAMPLE_SOURCE_LABEL:
         st.info(t("overview.sample_info"))
+    elif frame.empty:
+        st.info(t("common.upload_required"))
+        st.caption(t("common.upload_required_detail"))
 
     st.markdown(
         f"""
@@ -396,17 +406,17 @@ def render_page(frame: pd.DataFrame, source_label: str) -> None:
     )
     output_cards = [
         _build_feature_card(
-            eyebrow="CSV",
+            eyebrow=_localized_output_eyebrows()[0],
             title=t("overview.output.clean.title"),
             body=t("overview.output.clean.body"),
         ),
         _build_feature_card(
-            eyebrow="SCALE",
+            eyebrow=_localized_output_eyebrows()[1],
             title=t("overview.output.scaled.title"),
             body=t("overview.output.scaled.body"),
         ),
         _build_feature_card(
-            eyebrow="ML",
+            eyebrow=_localized_output_eyebrows()[2],
             title=t("overview.output.encoded.title"),
             body=t("overview.output.encoded.body"),
         ),

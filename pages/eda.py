@@ -15,7 +15,13 @@ from core.data import (
     coerce_currency,
     normalize_columns,
 )
-from core.i18n import localize_dataframe_for_display, t, translate_room_type
+from core.i18n import (
+    get_language,
+    localize_dataframe_for_display,
+    t,
+    translate_availability_category,
+    translate_room_type,
+)
 from pages.preprocessing import render_processing_panel, render_processing_steps_panel
 from users import logout_user
 
@@ -42,11 +48,6 @@ AVAILABILITY_CATEGORY_COLOR_MAP = {
     "Low Availability": "#1f3c5b",
     "Medium Availability": "#c95c36",
     "High Availability": "#d8a65d",
-}
-AVAILABILITY_CATEGORY_LABEL_MAP = {
-    "Low Availability": "Sẵn có thấp",
-    "Medium Availability": "Sẵn có trung bình",
-    "High Availability": "Sẵn có cao",
 }
 BOROUGH_DISPLAY_ORDER = ["brooklyn", "manhattan", "queens", "bronx", "staten island"]
 BOROUGH_LABEL_MAP = {
@@ -101,6 +102,93 @@ OUTLIER_DISPLAY_ORDER = [
     "calculated_host_listings_count",
     "availability_365",
 ]
+
+
+def _lang_text(vi: str, en: str) -> str:
+    return en if get_language() == "en" else vi
+
+
+def _availability_category_label_map() -> dict[str, str]:
+    return {
+        category: translate_availability_category(category)
+        for category in AVAILABILITY_CATEGORY_ORDER
+    }
+
+
+FEATURE_DETAIL_TRANSLATIONS = {
+    "booking_demand": {
+        "name": {"en": "Booking Demand", "vi": "Booking Demand (Nhu cầu đặt phòng)"},
+        "logic": {
+            "en": "Estimate booking demand from the number of unavailable nights.",
+            "vi": "Tính toán nhu cầu đặt phòng dựa trên số đêm không sẵn có.",
+        },
+        "formula": "booking_demand = 365 - availability_365",
+    },
+    "availability_category": {
+        "name": {"en": "Availability Category", "vi": "Availability Category (Phân loại mức độ sẵn có)"},
+        "logic": {
+            "en": "Split listings into Low Availability, Medium Availability, and High Availability groups based on available nights.",
+            "vi": "Phân chia các căn hộ thành 3 nhóm Low Availability, Medium Availability và High Availability dựa trên số đêm có sẵn.",
+        },
+        "formula": "availability_category = pd.cut(availability_365, bins=[-1, 150, 300, 365], labels=['Low Availability', 'Medium Availability', 'High Availability'])",
+    },
+    "availability_efficiency": {
+        "name": {"en": "Availability Efficiency", "vi": "Availability Efficiency (Hiệu quả sẵn có)"},
+        "logic": {
+            "en": "Evaluate how effectively available nights are used based on price and availability_365.",
+            "vi": "Đánh giá hiệu quả sử dụng các đêm có sẵn dựa trên price và availability_365.",
+        },
+        "formula": "availability_efficiency = price * (365 - availability_365)",
+    },
+    "revenue_per_available_night": {
+        "name": {"en": "Revenue per Available Night", "vi": "Revenue per Available Night (Doanh thu mỗi đêm có sẵn)"},
+        "logic": {
+            "en": "Evaluate revenue generated per available night when price and availability are linked.",
+            "vi": "Đánh giá doanh thu mỗi đêm có sẵn khi giá và mức độ sẵn có liên quan đến nhau.",
+        },
+        "formula": "revenue_per_available_night = price * (365 - availability_365) / 365",
+    },
+}
+
+
+def _feature_detail_key(item: dict[str, object]) -> str | None:
+    explicit_key = str(item.get("key") or "").strip()
+    if explicit_key in FEATURE_DETAIL_TRANSLATIONS:
+        return explicit_key
+
+    formula = str(item.get("formula") or "").strip()
+    for key, data in FEATURE_DETAIL_TRANSLATIONS.items():
+        if formula == data["formula"]:
+            return key
+
+    name = str(item.get("name") or "").lower()
+    if "booking demand" in name:
+        return "booking_demand"
+    if "availability category" in name:
+        return "availability_category"
+    if "availability efficiency" in name:
+        return "availability_efficiency"
+    if "revenue per available night" in name:
+        return "revenue_per_available_night"
+    return None
+
+
+def _localize_feature_detail(item: dict[str, object]) -> dict[str, str]:
+    key = _feature_detail_key(item)
+    lang = get_language()
+    if key is None:
+        return {
+            "name": str(item.get("name", "")),
+            "logic": str(item.get("logic", "")),
+            "formula": str(item.get("formula", "")),
+        }
+
+    localized = FEATURE_DETAIL_TRANSLATIONS[key]
+    return {
+        "name": localized["name"][lang],
+        "logic": localized["logic"][lang],
+        "formula": localized["formula"],
+    }
 
 
 def _coerce_numeric(series: pd.Series, fill_value: float | None = None) -> pd.Series:
@@ -185,7 +273,9 @@ def _render_chart(title: str, fig: px.scatter, _conclusion: str = "") -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _format_column_list(columns: list[str], empty_label: str = "Không có") -> str:
+def _format_column_list(columns: list[str], empty_label: str | None = None) -> str:
+    if empty_label is None:
+        empty_label = _lang_text("Không có", "None")
     if not columns:
         return empty_label
     return ", ".join(columns)
@@ -456,12 +546,12 @@ def _skew_chip_tone(skewness: float | None) -> str:
 
 def _missing_type_label(column: str, series: pd.Series) -> tuple[str, str]:
     if column in {"lat", "long"}:
-        return "Tọa độ", "geoid"
+        return _lang_text("Tọa độ", "Coordinate"), "geoid"
     if column in set(OUTLIER_DISPLAY_ORDER):
-        return "Số", "numeric"
+        return _lang_text("Số", "Numeric"), "numeric"
     if pd.api.types.is_numeric_dtype(series):
-        return "Số", "numeric"
-    return "Phân loại", "categorical"
+        return _lang_text("Số", "Numeric"), "numeric"
+    return _lang_text("Phân loại", "Categorical"), "categorical"
 
 
 def _prepare_profile_series(frame: pd.DataFrame, column: str) -> pd.Series:
@@ -502,6 +592,8 @@ def _choose_outlier_method(column: str, skewness: float | None) -> str:
 
 
 def _display_outlier_method(method: str) -> str:
+    if get_language() == "en":
+        return method
     mapping = {
         "Percentile Capping (1%, 99%)": "Chặn theo percentile (1%, 99%)",
         "IQR Capping": "Chặn theo IQR",
@@ -542,32 +634,32 @@ def _build_missing_strategy_map(
     dropped_columns: list[str],
 ) -> dict[str, str]:
     concise_labels = {
-        "host_identity_verified": 'Điền "unconfirmed"',
-        "neighbourhood": "Mode theo neighbourhood_group + room_type",
-        "neighbourhood_group": "Ánh xạ theo địa lý",
-        "construction_year": "Mode theo neighbourhood + room_type",
-        "price": "Mean theo neighbourhood + room_type",
-        "service_fee": "Xóa cột",
-        "minimum_nights": "Lấy trị tuyệt đối, >365 -> trung vị theo nhóm",
-        "number_of_reviews": "Trung vị theo neighbourhood + room_type",
-        "last_review": "Loại dòng bị thiếu",
-        "reviews_per_month": "Xóa cột",
-        "review_rate_number": "Mode theo neighbourhood + room_type",
-        "calculated_host_listings_count": "Tần suất host",
-        "availability_365": "Lấy trị tuyệt đối, >365 -> trung vị theo nhóm",
-        "host_id": "Sinh giá trị dự phòng duy nhất sau khi điền theo tần suất host",
-        "host_name": "Xóa cột",
-        "name": "Xóa cột",
-        "country": "Xóa cột",
-        "country_code": "Xóa cột",
-        "house_rules": "Xóa cột",
-        "license": "Xóa cột",
-        "lat": "Xóa cột",
-        "long": "Xóa cột",
-        "id": "Loại trùng rồi xóa",
+        "host_identity_verified": _lang_text('Điền "unconfirmed"', 'Fill with "unconfirmed"'),
+        "neighbourhood": _lang_text("Mode theo neighbourhood_group + room_type", "Mode by neighbourhood_group + room_type"),
+        "neighbourhood_group": _lang_text("Ánh xạ theo địa lý", "Geographic mapping"),
+        "construction_year": _lang_text("Mode theo neighbourhood + room_type", "Mode by neighbourhood + room_type"),
+        "price": _lang_text("Mean theo neighbourhood + room_type", "Mean by neighbourhood + room_type"),
+        "service_fee": _lang_text("Xóa cột", "Drop column"),
+        "minimum_nights": _lang_text("Lấy trị tuyệt đối, >365 -> trung vị theo nhóm", "Absolute value, >365 -> group median"),
+        "number_of_reviews": _lang_text("Trung vị theo neighbourhood + room_type", "Median by neighbourhood + room_type"),
+        "last_review": _lang_text("Loại dòng bị thiếu", "Drop missing rows"),
+        "reviews_per_month": _lang_text("Xóa cột", "Drop column"),
+        "review_rate_number": _lang_text("Mode theo neighbourhood + room_type", "Mode by neighbourhood + room_type"),
+        "calculated_host_listings_count": _lang_text("Tần suất host", "Host frequency"),
+        "availability_365": _lang_text("Lấy trị tuyệt đối, >365 -> trung vị theo nhóm", "Absolute value, >365 -> group median"),
+        "host_id": _lang_text("Sinh giá trị dự phòng duy nhất sau khi điền theo tần suất host", "Generate unique fallback values after host-frequency fill"),
+        "host_name": _lang_text("Xóa cột", "Drop column"),
+        "name": _lang_text("Xóa cột", "Drop column"),
+        "country": _lang_text("Xóa cột", "Drop column"),
+        "country_code": _lang_text("Xóa cột", "Drop column"),
+        "house_rules": _lang_text("Xóa cột", "Drop column"),
+        "license": _lang_text("Xóa cột", "Drop column"),
+        "lat": _lang_text("Xóa cột", "Drop column"),
+        "long": _lang_text("Xóa cột", "Drop column"),
+        "id": _lang_text("Loại trùng rồi xóa", "Deduplicate then drop"),
     }
     for column in dropped_columns:
-        concise_labels.setdefault(column, "Xóa cột")
+        concise_labels.setdefault(column, _lang_text("Xóa cột", "Drop column"))
     return concise_labels
 
 
@@ -605,7 +697,7 @@ def _build_missing_value_rows(
                 "missing_count": missing_count,
                 "missing_pct": missing_pct,
                 "skewness": skewness,
-                "strategy": strategy_map.get(column, "Cần xem xét thủ công"),
+                "strategy": strategy_map.get(column, _lang_text("Cần xem xét thủ công", "Needs manual review")),
             }
         )
     return rows
@@ -628,28 +720,41 @@ def _build_missing_strategy_table(
         column = str(row["column"])
         after_missing = int(after_lookup.loc[column, "missing_values"]) if column in after_lookup.index else 0
         status = (
-            "Đã xóa cột"
+            _lang_text("Đã xóa cột", "Column removed")
             if column in dropped_columns or column not in after_frame.columns
-            else "Đã loại dòng"
+            else _lang_text("Đã loại dòng", "Rows removed")
             if column == "last_review" and int(row["missing_count"]) > 0 and after_missing == 0
-            else "Đã điền/xử lý"
+            else _lang_text("Đã điền/xử lý", "Filled/processed")
             if after_missing == 0
-            else "Cần xem xét"
+            else _lang_text("Cần xem xét", "Needs review")
         )
         row_data: dict[str, object] = {
-            "Cột": column,
-            "Thiếu trước xử lý": int(row["missing_count"]),
-            "Thiếu sau xử lý": after_missing,
-            "Cách xử lý": str(row["strategy"]),
-            "Trạng thái": status,
+            _lang_text("Cột", "Column"): column,
+            _lang_text("Thiếu trước xử lý", "Missing before processing"): int(row["missing_count"]),
+            _lang_text("Thiếu sau xử lý", "Missing after processing"): after_missing,
+            _lang_text("Cách xử lý", "Handling"): str(row["strategy"]),
+            _lang_text("Trạng thái", "Status"): status,
         }
         if section == "numeric":
-            row_data["Độ lệch"] = None if row["skewness"] is None else round(float(row["skewness"]), 3)
+            row_data[_lang_text("Độ lệch", "Skewness")] = None if row["skewness"] is None else round(float(row["skewness"]), 3)
         table_rows.append(row_data)
 
-    ordered_columns = ["Cột", "Thiếu trước xử lý", "Thiếu sau xử lý", "Cách xử lý", "Trạng thái"]
+    ordered_columns = [
+        _lang_text("Cột", "Column"),
+        _lang_text("Thiếu trước xử lý", "Missing before processing"),
+        _lang_text("Thiếu sau xử lý", "Missing after processing"),
+        _lang_text("Cách xử lý", "Handling"),
+        _lang_text("Trạng thái", "Status"),
+    ]
     if section == "numeric":
-        ordered_columns = ["Cột", "Thiếu trước xử lý", "Thiếu sau xử lý", "Độ lệch", "Cách xử lý", "Trạng thái"]
+        ordered_columns = [
+            _lang_text("Cột", "Column"),
+            _lang_text("Thiếu trước xử lý", "Missing before processing"),
+            _lang_text("Thiếu sau xử lý", "Missing after processing"),
+            _lang_text("Độ lệch", "Skewness"),
+            _lang_text("Cách xử lý", "Handling"),
+            _lang_text("Trạng thái", "Status"),
+        ]
     if not table_rows:
         return pd.DataFrame(columns=ordered_columns)
     return pd.DataFrame(table_rows)[ordered_columns]
@@ -713,12 +818,12 @@ def _build_outlier_strategy_table(
             threshold_text = "< 0 or > 365"
         table_rows.append(
             {
-                "Cột": column,
-                "Ngưỡng dưới": round(lower, 3),
-                "Ngưỡng trên": round(upper, 3),
-                "Điều kiện ngoại lệ": threshold_text,
-                "Số giá trị đã điều chỉnh": int(adjusted_value_counts.get(column, 0)),
-                "Cách xử lý áp dụng": _display_outlier_method(str(method)),
+                _lang_text("Cột", "Column"): column,
+                _lang_text("Ngưỡng dưới", "Lower bound"): round(lower, 3),
+                _lang_text("Ngưỡng trên", "Upper bound"): round(upper, 3),
+                _lang_text("Điều kiện ngoại lệ", "Outlier condition"): threshold_text,
+                _lang_text("Số giá trị đã điều chỉnh", "Adjusted values"): int(adjusted_value_counts.get(column, 0)),
+                _lang_text("Cách xử lý áp dụng", "Applied handling"): _display_outlier_method(str(method)),
             }
         )
     return pd.DataFrame(table_rows)
@@ -763,11 +868,15 @@ def _render_missing_values_card(
             "</tr>"
         )
 
-    title = "Bảng 2 - Giá trị thiếu (dữ liệu số)" if section == "numeric" else "Bảng 1 - Giá trị thiếu (dữ liệu phân loại)"
-    meta = (
-        f"Chỉ gồm cột số - {len(section_rows):,} cột"
+    title = (
+        _lang_text("Bảng 2 - Giá trị thiếu (dữ liệu số)", "Table 2 - Missing values (numeric data)")
         if section == "numeric"
-        else f"Chỉ gồm cột phân loại - {len(section_rows):,} cột"
+        else _lang_text("Bảng 1 - Giá trị thiếu (dữ liệu phân loại)", "Table 1 - Missing values (categorical data)")
+    )
+    meta = (
+        _lang_text(f"Chỉ gồm cột số - {len(section_rows):,} cột", f"Numeric columns only - {len(section_rows):,} columns")
+        if section == "numeric"
+        else _lang_text(f"Chỉ gồm cột phân loại - {len(section_rows):,} cột", f"Categorical columns only - {len(section_rows):,} columns")
     )
     body_rows = [_render_row(row) for row in section_rows]
 
@@ -782,12 +891,12 @@ def _render_missing_values_card(
                 <table class="audit-table">
                     <thead>
                         <tr>
-                            <th>Cột</th>
-                            <th>Loại dữ liệu</th>
-                            <th>Số giá trị thiếu</th>
-                            <th>Tỷ lệ thiếu</th>
-                            <th>Độ lệch</th>
-                            <th>Cách xử lý</th>
+                            <th>{_lang_text("Cột", "Column")}</th>
+                            <th>{_lang_text("Loại dữ liệu", "Data type")}</th>
+                            <th>{_lang_text("Số giá trị thiếu", "Missing values")}</th>
+                            <th>{_lang_text("Tỷ lệ thiếu", "Missing rate")}</th>
+                            <th>{_lang_text("Độ lệch", "Skewness")}</th>
+                            <th>{_lang_text("Cách xử lý", "Handling")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -804,7 +913,7 @@ def _render_missing_values_card(
 def _render_outlier_card(before_frame: pd.DataFrame) -> None:
     rows = _build_outlier_rows(before_frame)
     if not rows:
-        st.info("Không có cột số phù hợp để kiểm tra ngoại lệ.")
+        st.info(_lang_text("Không có cột số phù hợp để kiểm tra ngoại lệ.", "No numeric columns are available for outlier checks."))
         return
 
     body_rows = []
@@ -827,21 +936,21 @@ def _render_outlier_card(before_frame: pd.DataFrame) -> None:
     st.markdown(
         f"""
         <div class="audit-card">
-            <div class="audit-card__header">
-                <div class="audit-card__title">Bảng 3 - Phát hiện ngoại lệ</div>
-                <div class="audit-card__meta">Chỉ gồm cột số - {len(rows):,} cột</div>
+                <div class="audit-card__header">
+                <div class="audit-card__title">{_lang_text("Bảng 3 - Phát hiện ngoại lệ", "Table 3 - Outlier detection")}</div>
+                <div class="audit-card__meta">{_lang_text(f"Chỉ gồm cột số - {len(rows):,} cột", f"Numeric columns only - {len(rows):,} columns")}</div>
             </div>
             <div class="audit-table-wrap">
                 <table class="audit-table">
                     <thead>
                         <tr>
-                            <th>Cột</th>
-                            <th>Nhỏ nhất</th>
-                            <th>Lớn nhất</th>
-                            <th>Độ lệch</th>
-                            <th>Cách xử lý tự động</th>
-                            <th>Số ngoại lệ</th>
-                            <th>Tỷ lệ ngoại lệ</th>
+                            <th>{_lang_text("Cột", "Column")}</th>
+                            <th>{_lang_text("Nhỏ nhất", "Minimum")}</th>
+                            <th>{_lang_text("Lớn nhất", "Maximum")}</th>
+                            <th>{_lang_text("Độ lệch", "Skewness")}</th>
+                            <th>{_lang_text("Cách xử lý tự động", "Automatic handling")}</th>
+                            <th>{_lang_text("Số ngoại lệ", "Outlier count")}</th>
+                            <th>{_lang_text("Tỷ lệ ngoại lệ", "Outlier rate")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -871,60 +980,70 @@ def _render_pipeline_summary(
     remaining_issues = processing_report.get("remaining_issues", [])
     _inject_audit_table_styles()
 
-    st.subheader("Tóm tắt lần chạy tiền xử lý")
-    st.caption("Tab này cho biết lần chạy tiền xử lý gần nhất đã thực hiện những gì trên bộ dữ liệu được tải lên.")
+    completed_label = _lang_text("Trạng thái: Hoàn tất", "Status: Completed")
+    st.subheader(_lang_text("Tóm tắt lần chạy tiền xử lý", "Latest preprocessing run summary"))
+    st.caption(
+        _lang_text(
+            "Tab này cho biết lần chạy tiền xử lý gần nhất đã thực hiện những gì trên bộ dữ liệu được tải lên.",
+            "This tab explains what the latest preprocessing run did to the uploaded dataset.",
+        )
+    )
 
     metric_cols = st.columns(5)
-    metric_cols[0].metric("Dòng trước xử lý", f"{rows_before:,}")
-    metric_cols[1].metric("Dòng sau xử lý", f"{rows_after:,}")
-    metric_cols[2].metric("Cột sau xử lý", f"{columns_after:,}")
-    metric_cols[3].metric("Bản ghi trùng đã xóa", f"{duplicates_removed:,}")
-    metric_cols[4].metric("Dòng bị loại do `last_review`", f"{rows_dropped_last_review:,}")
+    metric_cols[0].metric(t("prep.metric.rows_before"), f"{rows_before:,}")
+    metric_cols[1].metric(t("prep.metric.rows_after"), f"{rows_after:,}")
+    metric_cols[2].metric(_lang_text("Cột sau xử lý", "Columns after processing"), f"{columns_after:,}")
+    metric_cols[3].metric(t("prep.metric.duplicates_removed"), f"{duplicates_removed:,}")
+    metric_cols[4].metric(_lang_text("Dòng bị loại do `last_review`", "Rows removed by `last_review`"), f"{rows_dropped_last_review:,}")
 
     data_cleaning = step_metrics.get("data_cleaning", {})
-    with st.expander("1. Làm sạch dữ liệu", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
+    with st.expander(_lang_text("1. Làm sạch dữ liệu", "1. Data cleaning"), expanded=True):
+        st.write(completed_label)
         st.write(
-            "Chuẩn hóa tên cột: "
-            + str(data_cleaning.get("column_name_normalization", "lowercase + trim + ký tự đặc biệt -> _"))
+            _lang_text("Chuẩn hóa tên cột: ", "Column normalization: ")
+            + str(data_cleaning.get("column_name_normalization", "lowercase + trim + special chars -> _"))
         )
-        st.write(f"Cột chuỗi đã trim: {_format_column_list(data_cleaning.get('string_columns_stripped', []))}")
-        st.write(f"Cột văn bản đã làm sạch: {_format_column_list(data_cleaning.get('text_cleaned_columns', []))}")
-        st.write(f"Cột tiền tệ đã chuẩn hóa: {_format_column_list(data_cleaning.get('currency_cleaned_columns', []))}")
+        st.write(f"{_lang_text('Cột chuỗi đã trim', 'Trimmed string columns')}: {_format_column_list(data_cleaning.get('string_columns_stripped', []))}")
+        st.write(f"{_lang_text('Cột văn bản đã làm sạch', 'Sanitized text columns')}: {_format_column_list(data_cleaning.get('text_cleaned_columns', []))}")
+        st.write(f"{_lang_text('Cột tiền tệ đã chuẩn hóa', 'Normalized currency columns')}: {_format_column_list(data_cleaning.get('currency_cleaned_columns', []))}")
 
     duplicate_handling = step_metrics.get("duplicate_handling", {})
-    with st.expander("2. Xử lý dữ liệu trùng lặp", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Cột mục tiêu: {duplicate_handling.get('target_column') or 'Không tìm thấy cột id'}")
-        st.write(f"Số bản ghi trùng đã xóa: {int(duplicate_handling.get('duplicates_removed', 0)):,}")
-        st.write(f"Số dòng sau khi loại trùng: {int(duplicate_handling.get('rows_after_dedup', rows_after)):,}")
+    with st.expander(_lang_text("2. Xử lý dữ liệu trùng lặp", "2. Duplicate handling"), expanded=True):
+        st.write(completed_label)
+        st.write(
+            f"{_lang_text('Cột mục tiêu', 'Target column')}: "
+            f"{duplicate_handling.get('target_column') or _lang_text('Không tìm thấy cột id', 'No id column found')}"
+        )
+        st.write(f"{_lang_text('Số bản ghi trùng đã xóa', 'Duplicate records removed')}: {int(duplicate_handling.get('duplicates_removed', 0)):,}")
+        st.write(f"{_lang_text('Số dòng sau khi loại trùng', 'Rows after deduplication')}: {int(duplicate_handling.get('rows_after_dedup', rows_after)):,}")
 
     feature_selection = step_metrics.get("feature_selection", {})
-    with st.expander("3. Chọn đặc trưng", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Cột đã loại bỏ ({len(dropped_columns)}): {_format_column_list(feature_selection.get('dropped_columns', []))}")
-        st.write(f"Số cột còn lại: {len(feature_selection.get('remaining_columns', []))}")
+    with st.expander(_lang_text("3. Chọn đặc trưng", "3. Feature selection"), expanded=True):
+        st.write(completed_label)
+        st.write(f"{_lang_text('Cột đã loại bỏ', 'Dropped columns')} ({len(dropped_columns)}): {_format_column_list(feature_selection.get('dropped_columns', []))}")
+        st.write(f"{_lang_text('Số cột còn lại', 'Remaining columns')}: {len(feature_selection.get('remaining_columns', []))}")
 
     type_conversion = step_metrics.get("data_type_conversion", {})
-    with st.expander("4. Chuyển đổi kiểu dữ liệu", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Cột `float64`: {_format_column_list(type_conversion.get('float64_columns', []))}")
-        st.write(f"Cột datetime: {_format_column_list(type_conversion.get('datetime_columns', []))}")
-        st.write(f"Cột chuỗi đã chuyển lowercase: {_format_column_list(type_conversion.get('lowercase_string_columns', []))}")
+    with st.expander(_lang_text("4. Chuyển đổi kiểu dữ liệu", "4. Data type conversion"), expanded=True):
+        st.write(completed_label)
+        st.write(f"{_lang_text('Cột `float64`', '`float64` columns')}: {_format_column_list(type_conversion.get('float64_columns', []))}")
+        st.write(f"{_lang_text('Cột datetime', 'Datetime columns')}: {_format_column_list(type_conversion.get('datetime_columns', []))}")
+        st.write(f"{_lang_text('Cột chuỗi đã chuyển lowercase', 'Lowercased string columns')}: {_format_column_list(type_conversion.get('lowercase_string_columns', []))}")
 
     missing_value_handling = step_metrics.get("missing_value_handling", {})
-    with st.expander("5. Xử lý giá trị thiếu", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Listing thiếu `host_id` trước khi điền theo tần suất: {int(missing_value_handling.get('host_id_missing_count', 0)):,}")
-        st.write(f"Số dòng bị loại vì thiếu `last_review`: {int(missing_value_handling.get('rows_dropped_missing_last_review', 0)):,}")
+    with st.expander(_lang_text("5. Xử lý giá trị thiếu", "5. Missing-value handling"), expanded=True):
+        st.write(completed_label)
+        st.write(f"{_lang_text('Listing thiếu `host_id` trước khi điền theo tần suất', 'Listings missing `host_id` before host-frequency fill')}: {int(missing_value_handling.get('host_id_missing_count', 0)):,}")
+        st.write(f"{_lang_text('Số dòng bị loại vì thiếu `last_review`', 'Rows removed due to missing `last_review`')}: {int(missing_value_handling.get('rows_dropped_missing_last_review', 0)):,}")
         st.write(
-            "Số giá trị null còn lại sau tiền xử lý: "
+            _lang_text("Số giá trị null còn lại sau tiền xử lý: ", "Remaining null values after preprocessing: ")
+            +
             f"{int(missing_value_handling.get('remaining_null_count', 0)):,}"
         )
-        st.write("Quy tắc cho dữ liệu phân loại:")
+        st.write(_lang_text("Quy tắc cho dữ liệu phân loại:", "Rules for categorical data:"))
         for rule in missing_value_handling.get("categorical_fill_rules", []):
             st.write(f"- {rule}")
-        st.write("Quy tắc cho dữ liệu ngày giờ:")
+        st.write(_lang_text("Quy tắc cho dữ liệu ngày giờ:", "Rules for datetime data:"))
         for rule in missing_value_handling.get("datetime_fill_rules", []):
             st.write(f"- {rule}")
         if isinstance(after_frame, pd.DataFrame):
@@ -938,13 +1057,16 @@ def _render_pipeline_summary(
             if not categorical_strategy_table.empty:
                 st.dataframe(categorical_strategy_table, use_container_width=True, hide_index=True)
         _render_missing_values_card(before_frame, missing_value_handling, dropped_columns, section="categorical")
-        st.write("Quy tắc cho dữ liệu số:")
+        st.write(_lang_text("Quy tắc cho dữ liệu số:", "Rules for numeric data:"))
         for rule in missing_value_handling.get("numeric_fill_rules", []):
             st.write(f"- {rule}")
         invalid_counts = missing_value_handling.get("invalid_value_counts", {})
         if invalid_counts:
             st.write(
-                "Giá trị không hợp lệ đã được chuyển thành missing trước khi điền: "
+                _lang_text(
+                    "Giá trị không hợp lệ đã được chuyển thành missing trước khi điền: ",
+                    "Invalid values converted to missing before imputation: ",
+                )
                 + ", ".join(f"{column}={int(count):,}" for column, count in invalid_counts.items())
             )
         if isinstance(after_frame, pd.DataFrame):
@@ -958,17 +1080,22 @@ def _render_pipeline_summary(
             if not numeric_strategy_table.empty:
                 st.dataframe(numeric_strategy_table, use_container_width=True, hide_index=True)
         _render_missing_values_card(before_frame, missing_value_handling, dropped_columns, section="numeric")
-        st.caption("Các bảng thẻ bên dưới làm rõ mẫu thiếu dữ liệu ban đầu và quyết định điền, ánh xạ hoặc loại dòng mà pipeline đã áp dụng.")
+        st.caption(
+            _lang_text(
+                "Các bảng thẻ bên dưới làm rõ mẫu thiếu dữ liệu ban đầu và quyết định điền, ánh xạ hoặc loại dòng mà pipeline đã áp dụng.",
+                "The cards below make the original missing-data pattern and each fill, mapping, or row-removal decision easier to read.",
+            )
+        )
 
     outlier_handling = step_metrics.get("outlier_handling", {})
-    with st.expander("6. Xử lý ngoại lệ", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Cột đã chặn ngưỡng: {_format_column_list(outlier_handling.get('clipped_columns', []))}")
-        st.write(f"Cột đã làm tròn: {_format_column_list(outlier_handling.get('rounded_columns', []))}")
+    with st.expander(_lang_text("6. Xử lý ngoại lệ", "6. Outlier handling"), expanded=True):
+        st.write(completed_label)
+        st.write(f"{_lang_text('Cột đã chặn ngưỡng', 'Clipped columns')}: {_format_column_list(outlier_handling.get('clipped_columns', []))}")
+        st.write(f"{_lang_text('Cột đã làm tròn', 'Rounded columns')}: {_format_column_list(outlier_handling.get('rounded_columns', []))}")
         applied_methods = outlier_handling.get("applied_methods", {})
         if applied_methods:
             st.write(
-                "Phương pháp đã áp dụng: "
+                _lang_text("Phương pháp đã áp dụng: ", "Applied methods: ")
                 + ", ".join(f"{column} -> {_display_outlier_method(str(method))}" for column, method in applied_methods.items())
             )
         outlier_strategy_table = _build_outlier_strategy_table(before_frame, outlier_handling)
@@ -977,7 +1104,10 @@ def _render_pipeline_summary(
         adjusted_value_counts = outlier_handling.get("adjusted_value_counts", {})
         adjusted_table = pd.DataFrame(
             [
-                {"column": column, "adjusted_value_count": int(count)}
+                {
+                    _lang_text("Cột", "Column"): column,
+                    _lang_text("Số giá trị đã điều chỉnh", "Adjusted values"): int(count),
+                }
                 for column, count in adjusted_value_counts.items()
             ]
         )
@@ -985,125 +1115,216 @@ def _render_pipeline_summary(
             st.dataframe(adjusted_table, use_container_width=True, hide_index=True)
         if adjusted_value_counts:
             st.caption(
-                "Số giá trị đã điều chỉnh sau khi phát hiện ngoại lệ: "
+                _lang_text(
+                    "Số giá trị đã điều chỉnh sau khi phát hiện ngoại lệ: ",
+                    "Adjusted values after outlier detection: ",
+                )
                 + ", ".join(f"{column}={int(count):,}" for column, count in adjusted_value_counts.items())
             )
         _render_outlier_card(before_frame)
 
     integrity_check = step_metrics.get("integrity_check", {})
-    validation_status = "Đạt" if integrity_check.get("passed", False) else "Cần lưu ý"
+    validation_status = _lang_text("Đạt", "Passed") if integrity_check.get("passed", False) else _lang_text("Cần lưu ý", "Attention needed")
     st.caption(
-        "Kiểm tra ràng buộc: "
+        _lang_text("Kiểm tra ràng buộc: ", "Constraint check: ")
+        +
         f"{validation_status}. "
         f"availability_365 [0, 365]={integrity_check.get('availability_365_in_range', True)}, "
         f"minimum_nights [1, 365]={integrity_check.get('minimum_nights_in_range', True)}, "
         f"review_rate_number [0, 5]={integrity_check.get('review_rate_number_in_range', True)}."
     )
     if remaining_issues:
-        st.warning("Vấn đề còn lại: " + "; ".join(str(issue) for issue in remaining_issues))
+        st.warning(_lang_text("Vấn đề còn lại: ", "Remaining issues: ") + "; ".join(str(issue) for issue in remaining_issues))
 
     download_export = step_metrics.get("download_export", {})
-    with st.expander("7. Tải file tiền xử lý", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
+    with st.expander(_lang_text("7. Tải file tiền xử lý", "7. Export preprocessing files"), expanded=True):
+        st.write(completed_label)
         cleaned_shape = download_export.get("cleaned_shape", [rows_after, columns_after])
         scaled_shape = download_export.get("scaled_shape", [])
         encoded_shape = download_export.get("encoded_shape", [])
-        st.write(f"Tệp đã làm sạch: {download_export.get('cleaned_file', 'data/Airbnb_Data_cleaned.csv')}")
+        st.write(f"{_lang_text('Tệp đã làm sạch', 'Cleaned file')}: {download_export.get('cleaned_file', 'data/Airbnb_Data_cleaned.csv')}")
         if isinstance(cleaned_shape, list) and len(cleaned_shape) == 2:
-            st.write(f"Kích thước dataframe đã làm sạch: {cleaned_shape[0]:,} dòng x {cleaned_shape[1]:,} cột")
-        st.write(f"Tệp đã scale: {download_export.get('scaled_file', 'data/Airbnb_Data_scaled.csv')}")
+            st.write(f"{_lang_text('Kích thước dataframe đã làm sạch', 'Cleaned dataframe shape')}: {cleaned_shape[0]:,} {_lang_text('dòng', 'rows')} x {cleaned_shape[1]:,} {_lang_text('cột', 'columns')}")
+        st.write(f"{_lang_text('Tệp đã scale', 'Scaled file')}: {download_export.get('scaled_file', 'data/Airbnb_Data_scaled.csv')}")
         if isinstance(scaled_shape, list) and len(scaled_shape) == 2:
-            st.write(f"Kích thước dataframe đã scale: {scaled_shape[0]:,} dòng x {scaled_shape[1]:,} cột")
-        st.write(f"Tệp đã mã hóa: {download_export.get('encoded_file', 'data/Airbnb_Data_encoded.csv')}")
+            st.write(f"{_lang_text('Kích thước dataframe đã scale', 'Scaled dataframe shape')}: {scaled_shape[0]:,} {_lang_text('dòng', 'rows')} x {scaled_shape[1]:,} {_lang_text('cột', 'columns')}")
+        st.write(f"{_lang_text('Tệp đã mã hóa', 'Encoded file')}: {download_export.get('encoded_file', 'data/Airbnb_Data_encoded.csv')}")
         if isinstance(encoded_shape, list) and len(encoded_shape) == 2:
-            st.write(f"Kích thước dataframe đã mã hóa: {encoded_shape[0]:,} dòng x {encoded_shape[1]:,} cột")
+            st.write(f"{_lang_text('Kích thước dataframe đã mã hóa', 'Encoded dataframe shape')}: {encoded_shape[0]:,} {_lang_text('dòng', 'rows')} x {encoded_shape[1]:,} {_lang_text('cột', 'columns')}")
 
     feature_engineering = step_metrics.get("feature_engineering", {})
-    with st.expander("8. Tạo đặc trưng", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Cột mới được tạo: {_format_column_list(feature_engineering.get('engineered_columns', []))}")
+    with st.expander(_lang_text("8. Tạo đặc trưng", "8. Feature engineering"), expanded=True):
+        st.write(completed_label)
+        st.write(f"{_lang_text('Cột mới được tạo', 'New columns created')}: {_format_column_list(feature_engineering.get('engineered_columns', []))}")
         feature_details = feature_engineering.get("details", [])
         if feature_details:
             for item in feature_details:
-                st.write(f"• {item.get('name', '')}")
-                st.write(f"  Logic: {item.get('logic', '')}")
-                st.write(f"  Cách thực hiện: {item.get('formula', '')}")
+                localized_item = _localize_feature_detail(item)
+                st.write(f"• {localized_item['name']}")
+                st.write(f"  {_lang_text('Logic', 'Logic')}: {localized_item['logic']}")
+                st.write(f"  {_lang_text('Cách thực hiện', 'Implementation')}: {localized_item['formula']}")
         else:
             for definition in feature_engineering.get("definitions", []):
                 st.write(f"- {definition}")
 
     scaling = step_metrics.get("scaling", {})
-    with st.expander("9. Chuẩn hóa dữ liệu", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
-        st.write(f"Bộ scaler đang dùng: {scaling.get('active_scaler', 'MinMaxScaler')}")
-        st.write(f"Cột được scale ({int(scaling.get('scaled_column_count', len(scaled_columns)))}): {_format_column_list(scaling.get('scaled_columns', []))}")
+    with st.expander(_lang_text("9. Chuẩn hóa dữ liệu", "9. Data scaling"), expanded=True):
+        st.write(completed_label)
+        st.write(f"{_lang_text('Bộ scaler đang dùng', 'Active scaler')}: {scaling.get('active_scaler', 'MinMaxScaler')}")
+        st.write(f"{_lang_text('Cột được scale', 'Scaled columns')} ({int(scaling.get('scaled_column_count', len(scaled_columns)))}): {_format_column_list(scaling.get('scaled_columns', []))}")
         scaled_shape = scaling.get("scaled_shape", [rows_after, columns_after])
         if isinstance(scaled_shape, list) and len(scaled_shape) == 2:
-            st.write(f"Kích thước dataframe scaled: {scaled_shape[0]:,} dòng x {scaled_shape[1]:,} cột")
+            st.write(f"{_lang_text('Kích thước dataframe scaled', 'Scaled dataframe shape')}: {scaled_shape[0]:,} {_lang_text('dòng', 'rows')} x {scaled_shape[1]:,} {_lang_text('cột', 'columns')}")
         st.write(
-            f"Cột được giữ nguyên không scale: {_format_column_list(scaling.get('passthrough_columns', []))}"
+            f"{_lang_text('Cột được giữ nguyên không scale', 'Columns kept unscaled')}: {_format_column_list(scaling.get('passthrough_columns', []))}"
         )
-        st.write(f"Các scaler tham chiếu khác: {_format_column_list(scaling.get('alternative_scalers', []))}")
+        st.write(f"{_lang_text('Các scaler tham chiếu khác', 'Reference scalers')}: {_format_column_list(scaling.get('alternative_scalers', []))}")
         for note in scaling.get("notes", []):
             st.write(f"- {note}")
         recommended_by_column = scaling.get("recommended_by_column", {})
         if recommended_by_column:
             recommended_table = pd.DataFrame(
                 [
-                    {"column": column, "recommended_scaling": recommendation}
+                    {
+                        _lang_text("Cột", "Column"): column,
+                        _lang_text("Khuyến nghị scale", "Scaling recommendation"): recommendation,
+                    }
                     for column, recommendation in recommended_by_column.items()
                 ]
             )
             st.dataframe(recommended_table, use_container_width=True, hide_index=True)
 
     ml_ready_export = step_metrics.get("ml_ready_export", {})
-    with st.expander("D. Encoding các cột trong DataFrame (xuất file để đưa vào học máy)", expanded=True):
-        st.write("Trạng thái: Hoàn tất")
+    with st.expander(_lang_text("D. Encoding các cột trong DataFrame (xuất file để đưa vào học máy)", "D. Column encoding for the ML-ready export"), expanded=True):
+        st.write(completed_label)
         generated_counts = ml_ready_export.get("one_hot_generated_counts", {})
         encoding_plan_rows = [
-            {"STT": 1, "Cột": "host_id", "Loại dữ liệu": "Chuỗi / định danh", "Encoding": "Giữ nguyên để theo dõi host; không xem đây là biến phân loại cần label encoding.", "Đầu ra": "1 cột host_id"},
-            {"STT": 2, "Cột": "host_identity_verified", "Loại dữ liệu": "Nhị phân", "Encoding": 'Mã hóa nhị phân: "unconfirmed" -> 0, "verified" -> 1.', "Đầu ra": "1 cột số"},
-            {"STT": 3, "Cột": "neighbourhood_group", "Loại dữ liệu": "Phân loại nhiều mức", "Encoding": "Label Encoding để gom mỗi nhóm khu vực thành một mã số duy nhất, giúp dữ liệu gọn hơn cho mô hình dạng bảng.", "Đầu ra": "1 cột số"},
-            {"STT": 4, "Cột": "neighbourhood", "Loại dữ liệu": "Phân loại nhiều mức", "Encoding": "Label Encoding để biến tên khu vực thành mã số, tránh làm tăng quá nhiều số cột trong file ML-ready.", "Đầu ra": "1 cột số"},
-            {"STT": 5, "Cột": "room_type", "Loại dữ liệu": "Phân loại danh nghĩa", "Encoding": "One-Hot Encoding vì đây là biến ít mức và không có thứ bậc, nên không phù hợp để gán mã số thứ tự.", "Đầu ra": f"{int(generated_counts.get('room_type', 0)):,} cột nhị phân"},
-            {"STT": 6, "Cột": "construction_year", "Loại dữ liệu": "Năm / dữ liệu số", "Encoding": "Không label encode; chỉ chuyển về năm số để mô hình đọc trực tiếp.", "Đầu ra": "1 cột số"},
-            {"STT": 7, "Cột": "price", "Loại dữ liệu": "Dữ liệu số liên tục", "Encoding": "Giữ nguyên vì đây là biến số liên tục mang ý nghĩa trực tiếp.", "Đầu ra": "1 cột số"},
-            {"STT": 8, "Cột": "minimum_nights", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên sau khi làm sạch; không cần label encoding.", "Đầu ra": "1 cột số"},
-            {"STT": 9, "Cột": "number_of_reviews", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên để bảo toàn thông tin về mức độ quan tâm của khách hàng.", "Đầu ra": "1 cột số"},
-            {"STT": 10, "Cột": "last_review", "Loại dữ liệu": "Datetime", "Encoding": "Chuyển thành `days_since_last_review` rồi loại bỏ cột ngày gốc để mô hình xử lý dễ hơn.", "Đầu ra": "1 cột days_since_last_review"},
-            {"STT": 11, "Cột": "review_rate_number", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên vì giá trị đã ở dạng số có ý nghĩa thứ bậc tự nhiên.", "Đầu ra": "1 cột số"},
-            {"STT": 12, "Cột": "calculated_host_listings_count", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên để phản ánh quy mô listing của host.", "Đầu ra": "1 cột số"},
-            {"STT": 13, "Cột": "availability_365", "Loại dữ liệu": "Dữ liệu số", "Encoding": "Giữ nguyên vì đây là biến số quan trọng cho cung và cầu.", "Đầu ra": "1 cột số"},
+            {
+                _lang_text("STT", "No."): 1,
+                _lang_text("Cột", "Column"): "host_id",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Chuỗi / định danh", "String / identifier"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên để theo dõi host; không xem đây là biến phân loại cần label encoding.", "Keep as-is to track hosts; do not treat it as a categorical feature for label encoding."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột host_id", "1 host_id column"),
+            },
+            {
+                _lang_text("STT", "No."): 2,
+                _lang_text("Cột", "Column"): "host_identity_verified",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Nhị phân", "Binary"),
+                _lang_text("Encoding", "Encoding"): _lang_text('Mã hóa nhị phân: "unconfirmed" -> 0, "verified" -> 1.', 'Binary encoding: "unconfirmed" -> 0, "verified" -> 1.'),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 3,
+                _lang_text("Cột", "Column"): "neighbourhood_group",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Phân loại nhiều mức", "Multi-class categorical"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Label Encoding để gom mỗi nhóm khu vực thành một mã số duy nhất, giúp dữ liệu gọn hơn cho mô hình dạng bảng.", "Use label encoding so each neighborhood group becomes a single numeric code and the table model stays compact."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 4,
+                _lang_text("Cột", "Column"): "neighbourhood",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Phân loại nhiều mức", "Multi-class categorical"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Label Encoding để biến tên khu vực thành mã số, tránh làm tăng quá nhiều số cột trong file ML-ready.", "Use label encoding to convert area names into numeric codes without exploding the number of columns in the ML-ready file."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 5,
+                _lang_text("Cột", "Column"): "room_type",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Phân loại danh nghĩa", "Nominal categorical"),
+                _lang_text("Encoding", "Encoding"): _lang_text("One-Hot Encoding vì đây là biến ít mức và không có thứ bậc, nên không phù hợp để gán mã số thứ tự.", "Use one-hot encoding because this feature has few unordered levels and should not be assigned an artificial rank."),
+                _lang_text("Đầu ra", "Output"): _lang_text(f"{int(generated_counts.get('room_type', 0)):,} cột nhị phân", f"{int(generated_counts.get('room_type', 0)):,} binary columns"),
+            },
+            {
+                _lang_text("STT", "No."): 6,
+                _lang_text("Cột", "Column"): "construction_year",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Năm / dữ liệu số", "Year / numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Không label encode; chỉ chuyển về năm số để mô hình đọc trực tiếp.", "Do not label-encode it; convert it to a numeric year so the model can read it directly."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 7,
+                _lang_text("Cột", "Column"): "price",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Dữ liệu số liên tục", "Continuous numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên vì đây là biến số liên tục mang ý nghĩa trực tiếp.", "Keep as-is because it is a continuous numeric feature with direct meaning."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 8,
+                _lang_text("Cột", "Column"): "minimum_nights",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Dữ liệu số", "Numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên sau khi làm sạch; không cần label encoding.", "Keep as-is after cleaning; label encoding is not needed."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 9,
+                _lang_text("Cột", "Column"): "number_of_reviews",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Dữ liệu số", "Numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên để bảo toàn thông tin về mức độ quan tâm của khách hàng.", "Keep as-is to preserve information about customer attention and demand."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 10,
+                _lang_text("Cột", "Column"): "last_review",
+                _lang_text("Loại dữ liệu", "Data type"): "Datetime",
+                _lang_text("Encoding", "Encoding"): _lang_text("Chuyển thành `days_since_last_review` rồi loại bỏ cột ngày gốc để mô hình xử lý dễ hơn.", "Convert it to `days_since_last_review` and drop the original date column so the model can handle it more easily."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột days_since_last_review", "1 days_since_last_review column"),
+            },
+            {
+                _lang_text("STT", "No."): 11,
+                _lang_text("Cột", "Column"): "review_rate_number",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Dữ liệu số", "Numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên vì giá trị đã ở dạng số có ý nghĩa thứ bậc tự nhiên.", "Keep as-is because the value is already numeric and has a natural ordering."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 12,
+                _lang_text("Cột", "Column"): "calculated_host_listings_count",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Dữ liệu số", "Numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên để phản ánh quy mô listing của host.", "Keep as-is to reflect the host's listing portfolio size."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
+            {
+                _lang_text("STT", "No."): 13,
+                _lang_text("Cột", "Column"): "availability_365",
+                _lang_text("Loại dữ liệu", "Data type"): _lang_text("Dữ liệu số", "Numeric"),
+                _lang_text("Encoding", "Encoding"): _lang_text("Giữ nguyên vì đây là biến số quan trọng cho cung và cầu.", "Keep as-is because it is a key numeric signal for supply and demand."),
+                _lang_text("Đầu ra", "Output"): _lang_text("1 cột số", "1 numeric column"),
+            },
         ]
         st.dataframe(pd.DataFrame(encoding_plan_rows), use_container_width=True, hide_index=True)
-        st.markdown("**Bổ sung cho các cột được tạo từ Feature Engineering**")
+        st.markdown(f"**{_lang_text('Bổ sung cho các cột được tạo từ Feature Engineering', 'Additions for engineered columns')}**")
         engineered_encoding_rows = [
-            {"Cột mới": "booking_demand", "Cách xử lý": "Giữ nguyên numeric để đọc trực tiếp số đêm đã được đặt."},
-            {"Cột mới": "availability_category", "Cách xử lý": "Ordinal Encoding vì đây là biến có thứ bậc: Low Availability = 0, Medium Availability = 1, High Availability = 2."},
-            {"Cột mới": "availability_efficiency", "Cách xử lý": "Giữ nguyên numeric để so sánh hiệu quả khai thác giữa các nhóm listing."},
-            {"Cột mới": "revenue_per_available_night", "Cách xử lý": "Giữ nguyên numeric vì đây là chỉ số doanh thu trung bình trên mỗi đêm khả dụng."},
+            {_lang_text("Cột mới", "New column"): "booking_demand", _lang_text("Cách xử lý", "Handling"): _lang_text("Giữ nguyên numeric để đọc trực tiếp số đêm đã được đặt.", "Keep numeric so booked nights remain directly readable.")},
+            {_lang_text("Cột mới", "New column"): "availability_category", _lang_text("Cách xử lý", "Handling"): _lang_text("Ordinal Encoding vì đây là biến có thứ bậc: Low Availability = 0, Medium Availability = 1, High Availability = 2.", "Use ordinal encoding because this feature is ordered: Low Availability = 0, Medium Availability = 1, High Availability = 2.")},
+            {_lang_text("Cột mới", "New column"): "availability_efficiency", _lang_text("Cách xử lý", "Handling"): _lang_text("Giữ nguyên numeric để so sánh hiệu quả khai thác giữa các nhóm listing.", "Keep numeric to compare operating efficiency across listing groups.")},
+            {_lang_text("Cột mới", "New column"): "revenue_per_available_night", _lang_text("Cách xử lý", "Handling"): _lang_text("Giữ nguyên numeric vì đây là chỉ số doanh thu trung bình trên mỗi đêm khả dụng.", "Keep numeric because it already represents average revenue per available night.")},
         ]
         st.dataframe(pd.DataFrame(engineered_encoding_rows), use_container_width=True, hide_index=True)
 
         ml_shape = ml_ready_export.get("ml_shape", [])
         if isinstance(ml_shape, list) and len(ml_shape) == 2:
-            st.write(f"Kích thước dataframe encoded: {ml_shape[0]:,} dòng x {ml_shape[1]:,} cột")
+            st.write(f"{_lang_text('Kích thước dataframe encoded', 'Encoded dataframe shape')}: {ml_shape[0]:,} {_lang_text('dòng', 'rows')} x {ml_shape[1]:,} {_lang_text('cột', 'columns')}")
         dropped_identifier_columns = ml_ready_export.get("dropped_identifier_columns", [])
         if dropped_identifier_columns:
             st.write(
-                f"Cột định danh bị loại ở bước encoding: {_format_column_list(dropped_identifier_columns)}"
+                f"{_lang_text('Cột định danh bị loại ở bước encoding', 'Identifier columns dropped during encoding')}: {_format_column_list(dropped_identifier_columns)}"
             )
         st.write(
-            f"Cột không phải số được giữ lại có chủ đích: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
+            f"{_lang_text('Cột không phải số được giữ lại có chủ đích', 'Non-numeric columns intentionally kept')}: {_format_column_list(ml_ready_export.get('non_numeric_columns', []))}"
         )
         st.write(
-            "Tóm lại, label encoding chỉ áp dụng cho các cột phân loại nhiều mức như `neighbourhood_group` và `neighbourhood`. "
-            "`room_type` dùng one-hot encoding để tránh tạo ra thứ tự giả, còn `availability_category` dùng ordinal encoding vì bản thân biến này có mức độ thấp, trung bình và cao."
+            _lang_text(
+                "Tóm lại, label encoding chỉ áp dụng cho các cột phân loại nhiều mức như `neighbourhood_group` và `neighbourhood`. `room_type` dùng one-hot encoding để tránh tạo ra thứ tự giả, còn `availability_category` dùng ordinal encoding vì bản thân biến này có mức độ thấp, trung bình và cao.",
+                "In short, label encoding is used only for high-cardinality categorical columns such as `neighbourhood_group` and `neighbourhood`. `room_type` uses one-hot encoding to avoid a fake ordering, while `availability_category` uses ordinal encoding because it is inherently low, medium, and high.",
+            )
         )
 
-        with st.expander("Giải thích các cột One-Hot", expanded=False):
+        with st.expander(_lang_text("Giải thích các cột One-Hot", "One-hot column notes"), expanded=False):
             st.markdown(
-                "- `drop_first=True` nghĩa là file one-hot sẽ bỏ đi một nhóm chuẩn, nên số cột sinh ra bằng `số nhóm ban đầu - 1`."
+                _lang_text(
+                    "- `drop_first=True` nghĩa là file one-hot sẽ bỏ đi một nhóm chuẩn, nên số cột sinh ra bằng `số nhóm ban đầu - 1`.",
+                    "- `drop_first=True` removes one reference group, so the number of generated columns equals `original groups - 1`.",
+                )
             )
             generated_one_hot_columns = ml_ready_export.get("one_hot_generated_columns", [])
             room_type_columns = [
@@ -1111,11 +1332,14 @@ def _render_pipeline_summary(
             ]
             if generated_counts.get("room_type", 0):
                 st.markdown(
-                    f"- `room_type` có 4 nhóm gốc, nên sau khi one-hot với `drop_first=True` sẽ còn **{int(generated_counts.get('room_type', 0))} cột**."
+                    _lang_text(
+                        f"- `room_type` có 4 nhóm gốc, nên sau khi one-hot với `drop_first=True` sẽ còn **{int(generated_counts.get('room_type', 0))} cột**.",
+                        f"- `room_type` starts with 4 original groups, so after one-hot encoding with `drop_first=True` there are **{int(generated_counts.get('room_type', 0))} columns** left.",
+                    )
                 )
-                st.write("Các cột được tạo từ `room_type`:")
+                st.write(_lang_text("Các cột được tạo từ `room_type`:", "Columns generated from `room_type`:"))
                 st.write(_format_column_list(room_type_columns))
-        with st.expander("Ví dụ mã hóa dữ liệu", expanded=False):
+        with st.expander(_lang_text("Ví dụ mã hóa dữ liệu", "Encoding example"), expanded=False):
             st.code(
                 """
 encoded_df = df.copy()
@@ -1168,8 +1392,8 @@ encoded_df = pd.get_dummies(
             )
 
     st.markdown("---")
-    st.write(f"Tóm tắt cột đã loại: {_format_column_list(dropped_columns)}")
-    st.write(f"Tóm tắt cột đã scale: {_format_column_list(scaled_columns)}")
+    st.write(f"{_lang_text('Tóm tắt cột đã loại', 'Dropped-column summary')}: {_format_column_list(dropped_columns)}")
+    st.write(f"{_lang_text('Tóm tắt cột đã scale', 'Scaled-column summary')}: {_format_column_list(scaled_columns)}")
 
 
 def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
@@ -1179,12 +1403,20 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
     if page_mode == "preprocessing":
         st.title(t("prep.title"))
         st.caption(t("prep.caption"))
-        tab_data, tab_steps = st.tabs(["Dữ liệu", "Các bước tiền xử lý"])
+        tab_data, tab_steps = st.tabs([
+            _lang_text("Dữ liệu", "Data"),
+            _lang_text("Các bước tiền xử lý", "Preprocessing steps"),
+        ])
         with tab_data:
             render_processing_panel(_frame)
         with tab_steps:
             if processing_report is None or before_frame is None:
-                st.info("Chưa có tóm tắt runtime trong session hiện tại. Mô tả từng bước vẫn được hiển thị bên dưới.")
+                st.info(
+                    _lang_text(
+                        "Chưa có tóm tắt runtime trong session hiện tại. Mô tả từng bước vẫn được hiển thị bên dưới.",
+                        "No runtime summary is available in the current session yet. The step-by-step description is still shown below.",
+                    )
+                )
                 render_processing_steps_panel()
             else:
                 _render_pipeline_summary(processing_report, before_frame)
@@ -1193,12 +1425,16 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
         return
 
     eda_frame = _prepare_processed_eda_frame(_frame)
+    st.title(t("eda.title"))
+    st.caption(t("eda.caption"))
     if not isinstance(eda_frame, pd.DataFrame) or eda_frame.empty:
-        st.info("Hãy tải CSV ở trang Dữ liệu đầu vào trước để xem các biểu đồ EDA.")
+        st.info(_lang_text("Hãy tải CSV ở trang Dữ liệu đầu vào trước để xem các biểu đồ EDA.", "Upload a CSV in the Input Data page first to view the EDA charts."))
         return
 
     with st.container():
         viz_frame = eda_frame.copy()
+        availability_label_map = _availability_category_label_map()
+        room_sequence_display = [translate_room_type(item) for item in ROOM_SEQUENCE]
         if "neighbourhood_group" in viz_frame.columns:
             viz_frame["borough_key"] = (
                 viz_frame["neighbourhood_group"].astype("string").str.strip().str.lower()
@@ -1208,6 +1444,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
         if "room_type" in viz_frame.columns:
             room_type_series = viz_frame["room_type"].astype("string").str.strip()
             viz_frame["room_type"] = room_type_series.str.lower().map(ROOM_TYPE_CANONICAL_MAP).fillna(room_type_series)
+            viz_frame["room_type_label"] = viz_frame["room_type"].map(translate_room_type)
         if "availability_category" in viz_frame.columns:
             viz_frame["availability_category"] = (
                 viz_frame["availability_category"]
@@ -1234,7 +1471,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 .reset_index(name="share")
             )
             availability_mix["availability_category_label"] = availability_mix["availability_category"].map(
-                AVAILABILITY_CATEGORY_LABEL_MAP
+                availability_label_map
             )
             availability_mix["share_pct"] = availability_mix["share"] * 100
             pie_chart = px.pie(
@@ -1245,11 +1482,11 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 color="availability_category_label",
                 category_orders={
                     "availability_category_label": [
-                        AVAILABILITY_CATEGORY_LABEL_MAP[item] for item in AVAILABILITY_CATEGORY_ORDER
+                        availability_label_map[item] for item in AVAILABILITY_CATEGORY_ORDER
                     ]
                 },
                 color_discrete_map={
-                    AVAILABILITY_CATEGORY_LABEL_MAP[item]: color
+                    availability_label_map[item]: color
                     for item, color in AVAILABILITY_CATEGORY_COLOR_MAP.items()
                 },
             )
@@ -1261,7 +1498,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                 ].iloc[0]
             )
             _render_chart(
-                "1. Phân bố mức độ sẵn có (Cung)",
+                _lang_text("1. Phân bố mức độ sẵn có (Cung)", "1. Availability distribution (Supply)"),
                 pie_chart,
                 (
                     f'Insight: {dominant_category["share_pct"]:.1f}% listings thuộc nhóm '
@@ -1312,7 +1549,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                     else ""
                 )
                 _render_chart(
-                    "2. Nhu cầu đặt phòng theo khu vực (Cầu)",
+                    _lang_text("2. Nhu cầu đặt phòng theo khu vực (Cầu)", "2. Booking demand by area (Demand)"),
                     box_chart,
                     (
                         f'Insight: {lead_one["borough_label"]} dẫn đầu với trung vị khoảng {lead_one["booking_demand"]:.0f} đêm{second_clause}. '
@@ -1325,8 +1562,8 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
         price_demand_corr = None
         if {"price", "booking_demand", "borough_label"}.issubset(viz_frame.columns):
             scatter_columns = ["price", "booking_demand", "borough_label"]
-            if "room_type" in viz_frame.columns:
-                scatter_columns.append("room_type")
+            if "room_type_label" in viz_frame.columns:
+                scatter_columns.append("room_type_label")
             scatter_df = viz_frame.loc[viz_frame["price"].between(0, 1200), scatter_columns].dropna()
             if not scatter_df.empty:
                 scatter_chart = px.scatter(
@@ -1334,7 +1571,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                     x="price",
                     y="booking_demand",
                     color="borough_label",
-                    hover_data=[column for column in ["room_type"] if column in scatter_df.columns],
+                    hover_data=[column for column in ["room_type_label"] if column in scatter_df.columns],
                     opacity=0.45,
                     category_orders={"borough_label": AREA_SEQUENCE},
                     color_discrete_map={
@@ -1353,11 +1590,11 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                         x=trend_x,
                         y=slope * trend_x + intercept,
                         mode="lines",
-                        name="Đường xu hướng",
+                        name=_lang_text("Đường xu hướng", "Trend line"),
                         line=dict(color="#223247", width=3),
                     )
                 _render_chart(
-                    "3. Giá theo nhu cầu đặt phòng (Giá và cầu)",
+                    _lang_text("3. Giá theo nhu cầu đặt phòng (Giá và cầu)", "3. Price versus booking demand (Price and demand)"),
                     scatter_chart,
                     (
                         "Insight: Đường xu hướng gần như nằm ngang trong vùng giá từ 0-1200 USD. "
@@ -1373,12 +1610,12 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
         if {"room_type", "borough_label", "availability_efficiency"}.issubset(viz_frame.columns):
             efficiency_matrix = (
                 viz_frame.pivot_table(
-                    index="room_type",
+                    index="room_type_label" if "room_type_label" in viz_frame.columns else "room_type",
                     columns="borough_label",
                     values="availability_efficiency",
                     aggfunc="mean",
                 )
-                .reindex(index=ROOM_SEQUENCE, columns=AREA_SEQUENCE)
+                .reindex(index=room_sequence_display, columns=AREA_SEQUENCE)
             )
             efficiency_values = efficiency_matrix.stack().dropna()
             if not efficiency_values.empty:
@@ -1406,7 +1643,7 @@ def render_page(_frame: pd.DataFrame, page_mode: str = "eda") -> None:
                     color_continuous_scale=["#f4efe8", "#d8a65d", "#c95c36", "#5d2014"],
                 )
                 _render_chart(
-                    "4. Heatmap hiệu quả khai thác theo mức sẵn có (Hiệu quả)",
+                    _lang_text("4. Heatmap hiệu quả khai thác theo mức sẵn có (Hiệu quả)", "4. Availability-efficiency heatmap (Efficiency)"),
                     heatmap,
                     (
                         f"Insight: {top_two_pairs.index[0][1]} + {top_two_pairs.index[0][0]} ({top_two_pairs.iloc[0]:,.0f}) "

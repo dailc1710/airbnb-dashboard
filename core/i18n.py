@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -27,6 +29,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "common.na": {
         "en": "N/A",
         "vi": "Không có",
+    },
+    "common.upload_required": {
+        "en": "Upload a CSV in Input Data before using this section.",
+        "vi": "Hãy tải CSV ở Dữ liệu đầu vào trước khi dùng mục này.",
+    },
+    "common.upload_required_detail": {
+        "en": "The dashboard only runs preprocessing, EDA, conclusions, and chatbot features after a CSV is uploaded in the current session.",
+        "vi": "Dashboard chỉ chạy tiền xử lý, EDA, kết luận và chatbot sau khi bạn tải CSV trong session hiện tại.",
+    },
+    "common.go_to_input_data": {
+        "en": "Go to Input Data",
+        "vi": "Đi tới Dữ liệu đầu vào",
     },
     "common.days_suffix": {
         "en": "{value} days",
@@ -111,6 +125,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "sidebar.logout": {
         "en": "Logout session",
         "vi": "Đăng xuất",
+    },
+    "role.admin": {
+        "en": "Admin",
+        "vi": "Quản trị viên",
+    },
+    "role.user": {
+        "en": "User",
+        "vi": "Người dùng",
     },
     "auth.language_hint": {
         "en": "Display language",
@@ -350,7 +372,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "overview.metric.listings": {
         "en": "Listings",
-        "vi": "Listing",
+        "vi": "Tin đăng",
     },
     "overview.metric.median_price": {
         "en": "Median Price",
@@ -438,27 +460,27 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "overview.output.clean.title": {
         "en": "Cleaned analytical dataset",
-        "vi": "Bộ dữ liệu phân tích đã clean",
+        "vi": "Bộ dữ liệu phân tích đã làm sạch",
     },
     "overview.output.clean.body": {
         "en": "The main export after cleaning, missing-value handling, outlier handling, and feature engineering.",
-        "vi": "Đầu ra chính sau cleaning, xử lý missing, xử lý outlier và tạo đặc trưng.",
+        "vi": "Đầu ra chính sau khi làm sạch, xử lý giá trị thiếu, xử lý ngoại lệ và tạo đặc trưng.",
     },
     "overview.output.scaled.title": {
         "en": "Visualization-ready scaled file",
-        "vi": "File scaled cho visualization",
+        "vi": "Tệp đã chuẩn hóa cho trực quan hóa",
     },
     "overview.output.scaled.body": {
         "en": "A MinMax-scaled version for comparing numeric features on common visual ranges.",
-        "vi": "Bản MinMax-scaled để so sánh các biến số trên cùng một thang đo trực quan.",
+        "vi": "Phiên bản MinMax đã chuẩn hóa để so sánh các biến số trên cùng một thang đo trực quan.",
     },
     "overview.output.encoded.title": {
         "en": "Machine-learning export",
-        "vi": "File cho học máy",
+        "vi": "Tệp cho học máy",
     },
     "overview.output.encoded.body": {
         "en": "An encoded dataframe for downstream modeling after categorical transformation and datetime engineering.",
-        "vi": "DataFrame đã encode để đưa vào mô hình sau khi biến đổi categorical và datetime.",
+        "vi": "DataFrame đã được mã hóa để đưa vào mô hình sau khi biến đổi cột phân loại và xử lý cột thời gian.",
     },
     "overview.chart.price_distribution": {
         "en": "Nightly price distribution",
@@ -1029,8 +1051,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vi": "Tên đăng nhập đó đã tồn tại.",
     },
     "auth.notice.account_created": {
-        "en": "Account created. You can now log in.",
-        "vi": "Tài khoản đã được tạo. Bây giờ bạn có thể đăng nhập.",
+        "en": "Account created with user access. You can now log in.",
+        "vi": "Tài khoản đã được tạo với quyền user. Bây giờ bạn có thể đăng nhập.",
     },
     "auth.error.invalid_login": {
         "en": "Invalid username or password.",
@@ -1145,6 +1167,12 @@ ROOM_TYPE_TRANSLATIONS = {
     },
 }
 
+AVAILABILITY_CATEGORY_TRANSLATIONS = {
+    "Low Availability": {"en": "Low Availability", "vi": "Sẵn có thấp"},
+    "Medium Availability": {"en": "Medium Availability", "vi": "Sẵn có trung bình"},
+    "High Availability": {"en": "High Availability", "vi": "Sẵn có cao"},
+}
+
 CUSTOMER_SEGMENT_TRANSLATIONS = {
     "short stay (1-3 nights)": {
         "en": "Short stay (1-3 nights)",
@@ -1163,16 +1191,24 @@ CUSTOMER_SEGMENT_TRANSLATIONS = {
 COLUMN_TRANSLATIONS = {
     "id": {"en": "ID", "vi": "ID"},
     "name": {"en": "Name", "vi": "Tên"},
+    "host_id": {"en": "Host ID", "vi": "Mã chủ nhà"},
     "host_name": {"en": "Host Name", "vi": "Tên chủ nhà"},
+    "host_identity_verified": {"en": "Host Identity Verified", "vi": "Xác minh danh tính chủ nhà"},
     "neighbourhood_group": {"en": "Neighborhood Group", "vi": "Nhóm khu vực"},
     "neighbourhood": {"en": "Neighborhood", "vi": "Khu vực"},
     "room_type": {"en": "Room Type", "vi": "Loại phòng"},
     "price": {"en": "Price", "vi": "Giá"},
+    "service_fee": {"en": "Service Fee", "vi": "Phí dịch vụ"},
     "number_of_reviews": {"en": "Number of Reviews", "vi": "Số đánh giá"},
     "reviews_per_month": {"en": "Reviews per Month", "vi": "Đánh giá mỗi tháng"},
     "review_rate_number": {"en": "Review Score", "vi": "Điểm đánh giá"},
     "minimum_nights": {"en": "Minimum Nights", "vi": "Số đêm tối thiểu"},
     "availability_365": {"en": "Availability 365", "vi": "Số ngày còn trống/năm"},
+    "lat": {"en": "Latitude", "vi": "Vĩ độ"},
+    "long": {"en": "Longitude", "vi": "Kinh độ"},
+    "country": {"en": "Country", "vi": "Quốc gia"},
+    "country_code": {"en": "Country Code", "vi": "Mã quốc gia"},
+    "construction_year": {"en": "Construction Year", "vi": "Năm xây dựng"},
     "booking_demand": {"en": "Booking Demand", "vi": "Nhu cầu đặt phòng"},
     "availability_category": {"en": "Availability Category", "vi": "Mức độ sẵn có"},
     "availability_efficiency": {"en": "Availability Efficiency", "vi": "Hiệu quả sẵn có"},
@@ -1267,16 +1303,31 @@ def translate_customer_segment(value: object, language: str | None = None) -> st
     return CUSTOMER_SEGMENT_TRANSLATIONS.get(text, {}).get(lang, text)
 
 
+def translate_availability_category(value: object, language: str | None = None) -> str:
+    text = str(value)
+    lang = language or get_language()
+    return AVAILABILITY_CATEGORY_TRANSLATIONS.get(text, {}).get(lang, text)
+
+
+def _normalize_column_key(column: object) -> str:
+    return re.sub(r"_+", "_", re.sub(r"[^0-9a-zA-Z]+", "_", str(column).strip().lower())).strip("_")
+
+
 def localize_dataframe_for_display(frame: pd.DataFrame, language: str | None = None) -> pd.DataFrame:
     lang = language or get_language()
     localized = frame.copy()
-    if "room_type" in localized.columns:
-        localized["room_type"] = localized["room_type"].map(lambda value: translate_room_type(value, lang))
-    if "customer_segment" in localized.columns:
-        localized["customer_segment"] = localized["customer_segment"].map(lambda value: translate_customer_segment(value, lang))
+    normalized_lookup = {column: _normalize_column_key(column) for column in localized.columns}
+
+    for column, normalized in normalized_lookup.items():
+        if normalized == "room_type":
+            localized[column] = localized[column].map(lambda value: translate_room_type(value, lang))
+        elif normalized == "customer_segment":
+            localized[column] = localized[column].map(lambda value: translate_customer_segment(value, lang))
+        elif normalized == "availability_category":
+            localized[column] = localized[column].map(lambda value: translate_availability_category(value, lang))
 
     rename_map = {
-        column: COLUMN_TRANSLATIONS.get(column, {}).get(lang, column)
+        column: COLUMN_TRANSLATIONS.get(normalized_lookup[column], {}).get(lang, column)
         for column in localized.columns
     }
     return localized.rename(columns=rename_map)
