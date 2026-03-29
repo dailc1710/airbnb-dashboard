@@ -18,12 +18,7 @@ NAVIGATION_PAGES = [
 ]
 ROLE_NAVIGATION_PAGES = {
     ADMIN_ROLE: NAVIGATION_PAGES,
-    USER_ROLE: [
-        "overview",
-        "eda",
-        "conclusion",
-        "chatbot",
-    ],
+    USER_ROLE: list(NAVIGATION_PAGES),
 }
 CHART_COLORS = ["#1f3c5b", "#c95c36", "#d8a65d", "#6d8f71"]
 
